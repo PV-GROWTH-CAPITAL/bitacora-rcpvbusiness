@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase } from "lucide-react";
+import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import TradingJournal from "./TradingJournal";
 import Contabilidad from "./Contabilidad";
 import EstrategiaTrading from "./EstrategiaTrading";
 import Informes from "./Informes";
 import Objetivos from "./Objetivos";
+import CuentasActivas from "./CuentasActivas";
 
 export default function AppShell({ session, onLogout }) {
   const [page, setPage] = useState("journal"); // "journal" | "estrategia" | "informes" | "objetivos" | "contabilidad"
@@ -13,6 +14,7 @@ export default function AppShell({ session, onLogout }) {
   const [contabilidadOpen, setContabilidadOpen] = useState(false);
   const [contabilidadEmpresa, setContabilidadEmpresa] = useState("GENERAL");
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPass1, setNewPass1] = useState("");
   const [newPass2, setNewPass2] = useState("");
@@ -21,18 +23,25 @@ export default function AppShell({ session, onLogout }) {
 
   const CONTABILIDAD_EMPRESAS = ["MY FUNDED FUTURES", "APEX", "LUCID TRADING", "TOPSTEP", "FUNDING PIPS", "FUNDED NEXT", "ALPHA CAPITAL", "TRADEIFY", "FTMO", "5ERS"];
 
-  const analisisPages = ["journal", "estrategia"];
+  const analisisPages = ["journal", "estrategia", "cuentas-activas"];
   const analisisActivo = analisisPages.includes(page);
 
   function irAAnalisis(sub) {
     setPage(sub);
     setAnalisisOpen(true);
+    setMobileMenuOpen(false);
   }
 
   function irAContabilidad(empresa = "GENERAL") {
     setPage("contabilidad");
     setContabilidadEmpresa(empresa);
     setContabilidadOpen(true);
+    setMobileMenuOpen(false);
+  }
+
+  function irASimple(pagina) {
+    setPage(pagina);
+    setMobileMenuOpen(false);
   }
 
   function clicContabilidadPadre() {
@@ -161,22 +170,72 @@ export default function AppShell({ session, onLogout }) {
         .shell-msg-error { background: #6E2E26; color: #FBD8D2; font-size: 12.5px; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; }
         .shell-msg-info { background: #2E5F44; color: #D9F2E4; font-size: 12.5px; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; }
 
+        .shell-mobile-topbar { display: none; }
+        .shell-backdrop { display: none; }
+
         @media (max-width: 720px) {
           .shell-root { flex-direction: column; }
-          .shell-sidebar, .shell-sidebar.collapsed { width: 100%; height: auto; position: static; flex-direction: row; align-items: center; }
-          .shell-brand { display: none; }
+
+          .shell-mobile-topbar {
+            display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 50;
+            background: #161F2B; border-bottom: 1px solid #2A3648; padding: 12px 14px;
+          }
+          .shell-mobile-brand-text {
+            font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; color: #E7ECF2;
+          }
+          .shell-hamburger { padding: 6px; }
+
+          .shell-backdrop {
+            display: block; position: fixed; inset: 0; background: rgba(6, 9, 13, 0.6); z-index: 55;
+          }
+
+          .shell-sidebar, .shell-sidebar.collapsed {
+            width: 260px; height: 100vh; position: fixed; top: 0; left: 0; z-index: 60;
+            flex-direction: column; align-items: stretch; transform: translateX(-100%);
+            transition: transform 0.2s ease; box-shadow: 0 0 40px rgba(0,0,0,0.5);
+          }
+          .shell-sidebar.mobile-open, .shell-sidebar.collapsed.mobile-open { transform: translateX(0); width: 260px; }
+          .shell-sidebar.collapsed:not(.mobile-open) .shell-brand,
+          .shell-sidebar.collapsed:not(.mobile-open) .shell-nav,
+          .shell-sidebar.collapsed:not(.mobile-open) .shell-user { display: none; }
+
+          .shell-brand { display: flex; }
           .shell-collapse-btn { display: none; }
-          .shell-nav { flex-direction: row; padding: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 4px; }
-          .shell-nav-btn, .shell-sidebar.collapsed .shell-nav-btn { width: auto; flex-shrink: 0; padding: 8px 10px; justify-content: flex-start; }
-          .shell-sidebar.collapsed .nav-label, .nav-label { display: inline; }
-          .shell-nav-btn .left { gap: 6px; }
-          .shell-submenu { flex-direction: row; border-left: none; margin-left: 0; padding: 0; flex-shrink: 0; }
-          .shell-user { border-top: none; border-left: 1px solid #2A3648; flex-shrink: 0; }
-          .shell-main { min-width: 0; }
+          .shell-nav { flex-direction: column; padding: 14px 10px; overflow-x: visible; gap: 4px; }
+          .shell-nav-btn, .shell-sidebar.collapsed .shell-nav-btn { width: 100%; padding: 10px 12px; justify-content: flex-start; }
+          .shell-nav-label, .nav-label { display: inline; }
+          .shell-nav-btn .left { gap: 10px; }
+          .shell-submenu { flex-direction: column; border-left: 1px solid #2A3648; margin-left: 14px; padding: 2px 0 6px 14px; }
+          .shell-user { border-top: 1px solid #2A3648; border-left: none; }
+          .shell-main { min-width: 0; width: 100%; }
         }
       `}</style>
 
-      <aside className={`shell-sidebar ${collapsed ? "collapsed" : ""}`}>
+      <div className="shell-mobile-topbar">
+        <button
+          className="shell-icon-btn shell-hamburger"
+          onClick={() => setMobileMenuOpen((v) => !v)}
+          aria-label={mobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
+          title={mobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
+        >
+          <Menu size={20} />
+        </button>
+        <span className="shell-monogram" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M6 18V9" stroke="#C6A15A" strokeWidth="2" strokeLinecap="round" />
+            <path d="M6 9L4 7M6 9L8 7" stroke="#C6A15A" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M18 15V6" stroke="#E2C589" strokeWidth="2" strokeLinecap="round" />
+            <path d="M18 15L16 17M18 15L20 17" stroke="#E2C589" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </span>
+        <span className="shell-mobile-brand-text">Bitácora</span>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="shell-backdrop" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      <aside className={`shell-sidebar ${collapsed ? "collapsed" : ""} ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="shell-brand">
           <span className="shell-monogram" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -213,13 +272,16 @@ export default function AppShell({ session, onLogout }) {
               <button className={`shell-subbtn ${page === "estrategia" ? "active" : ""}`} onClick={() => irAAnalisis("estrategia")}>
                 <ClipboardCheck size={14} /> Estrategia de trading
               </button>
+              <button className={`shell-subbtn ${page === "cuentas-activas" ? "active" : ""}`} onClick={() => irAAnalisis("cuentas-activas")}>
+                <Landmark size={14} /> Cuentas activas
+              </button>
             </div>
           )}
 
-          <button className={`shell-nav-btn ${page === "informes" ? "active" : ""}`} onClick={() => setPage("informes")} title="Informes">
+          <button className={`shell-nav-btn ${page === "informes" ? "active" : ""}`} onClick={() => irASimple("informes")} title="Informes">
             <BarChart3 size={16} /> <span className="nav-label">Informes</span>
           </button>
-          <button className={`shell-nav-btn ${page === "objetivos" ? "active" : ""}`} onClick={() => setPage("objetivos")} title="Objetivos">
+          <button className={`shell-nav-btn ${page === "objetivos" ? "active" : ""}`} onClick={() => irASimple("objetivos")} title="Objetivos">
             <Target size={16} /> <span className="nav-label">Objetivos</span>
           </button>
           <button
@@ -271,6 +333,8 @@ export default function AppShell({ session, onLogout }) {
           <TradingJournal session={session} />
         ) : page === "estrategia" ? (
           <EstrategiaTrading session={session} />
+        ) : page === "cuentas-activas" ? (
+          <CuentasActivas session={session} />
         ) : page === "informes" ? (
           <Informes session={session} />
         ) : page === "objetivos" ? (
