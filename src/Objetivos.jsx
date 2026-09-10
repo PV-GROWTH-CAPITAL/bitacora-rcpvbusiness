@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Plus, X, Trash2, Check, ChevronLeft, ChevronRight, Target, Pencil } from "lucide-react";
-import { supabase } from "./supabaseClient";
+import { supabase, conReintento } from "./supabaseClient";
 
 const OBJETIVOS_TABLE = "objetivos";
 const TRADES_TABLE = "trades";
@@ -184,8 +184,8 @@ function SeccionObjetivos() {
   const cargar = useCallback(async () => {
     setError(false);
     const [{ data: obs, error: err1 }, { data: ops, error: err2 }] = await Promise.all([
-      supabase.from(OBJETIVOS_TABLE).select("*").order("fecha_fin", { ascending: false }),
-      supabase.from(TRADES_TABLE).select("fecha, resultado"),
+      conReintento(() => supabase.from(OBJETIVOS_TABLE).select("*").order("fecha_fin", { ascending: false })),
+      conReintento(() => supabase.from(TRADES_TABLE).select("fecha, resultado")),
     ]);
     if (err1 || err2) {
       console.error(err1 || err2);

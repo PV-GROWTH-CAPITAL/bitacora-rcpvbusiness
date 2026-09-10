@@ -3,7 +3,7 @@ import {
   Plus, X, Trash2, Pencil, Briefcase, LayoutDashboard, 
   TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ChevronRight 
 } from "lucide-react";
-import { supabase } from "./supabaseClient";
+import { supabase, conReintento } from "./supabaseClient";
 
 const TABLA_COMPRAS = "cuentas_compradas";
 const TABLA_RETIROS = "retiros";
@@ -69,9 +69,9 @@ export default function Contabilidad({ session, activeTab = "GENERAL", onActiveT
   const cargar = useCallback(async () => {
     setError(false);
     const [c, r, i] = await Promise.all([
-      supabase.from(TABLA_COMPRAS).select("*").order("fecha", { ascending: false }),
-      supabase.from(TABLA_RETIROS).select("*").order("fecha", { ascending: false }),
-      supabase.from(TABLA_INVERSIONES).select("*").order("fecha", { ascending: false }),
+      conReintento(() => supabase.from(TABLA_COMPRAS).select("*").order("fecha", { ascending: false })),
+      conReintento(() => supabase.from(TABLA_RETIROS).select("*").order("fecha", { ascending: false })),
+      conReintento(() => supabase.from(TABLA_INVERSIONES).select("*").order("fecha", { ascending: false })),
     ]);
     
     if (c.error || r.error) {

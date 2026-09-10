@@ -13,7 +13,7 @@ import {
   Cell,
 } from "recharts";
 import { ChevronLeft, ChevronRight, CalendarRange, CalendarDays, Layers, Clock } from "lucide-react";
-import { supabase } from "./supabaseClient";
+import { supabase, conReintento } from "./supabaseClient";
 
 const TRADES_TABLE = "trades";
 const ESTRATEGIA_REGISTROS_TABLE = "estrategia_registros";
@@ -61,8 +61,8 @@ export default function Informes() {
   const cargar = useCallback(async () => {
     setError(false);
     const [{ data: ops, error: err1 }, { data: regs, error: err2 }] = await Promise.all([
-      supabase.from(TRADES_TABLE).select("*"),
-      supabase.from(ESTRATEGIA_REGISTROS_TABLE).select("fecha, cumplida"),
+      conReintento(() => supabase.from(TRADES_TABLE).select("*")),
+      conReintento(() => supabase.from(ESTRATEGIA_REGISTROS_TABLE).select("fecha, cumplida")),
     ]);
     if (err1 || err2) {
       console.error(err1 || err2);

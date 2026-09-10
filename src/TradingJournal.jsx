@@ -23,7 +23,7 @@ import {
   ChevronLeft,
   ArrowUpDown,
 } from "lucide-react";
-import { supabase } from "./supabaseClient";
+import { supabase, conReintento } from "./supabaseClient";
 
 const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const TABLE = "trades";
@@ -128,10 +128,9 @@ export default function TradingJournal({ session }) {
   const [riesgoLoaded, setRiesgoLoaded] = useState(false);
 
   const cargarRiesgo = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("configuracion")
-      .select("riesgo_maximo_diario")
-      .maybeSingle();
+    const { data, error } = await conReintento(() =>
+      supabase.from("configuracion").select("riesgo_maximo_diario").maybeSingle()
+    );
     if (!error && data) {
       setRiesgoMaximo(data.riesgo_maximo_diario);
       setRiesgoInput(data.riesgo_maximo_diario != null ? String(data.riesgo_maximo_diario) : "");
@@ -151,10 +150,9 @@ export default function TradingJournal({ session }) {
 
   const cargarTrades = useCallback(async () => {
     setSaveError(false);
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select("*")
-      .order("fecha", { ascending: false });
+    const { data, error } = await conReintento(() =>
+      supabase.from(TABLE).select("*").order("fecha", { ascending: false })
+    );
     if (error) {
       console.error(error);
       setSaveError(true);
