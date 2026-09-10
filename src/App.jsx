@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 import AppShell from "./AppShell";
+import LandingPage from "./LandingPage";
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = cargando, null = sin sesión
+  const [showLanding, setShowLanding] = useState(true);
+  const [legalOpen, setLegalOpen] = useState(null); // null | "aviso" | "privacidad" | "cookies"
   const [mode, setMode] = useState("login"); // "login" | "signup" | "forgot" | "reset"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -211,12 +214,41 @@ export default function App() {
     );
   }
 
+  // Landing de presentación, antes de pedir login o registro
+  if (!session && showLanding && (mode === "login" || mode === "signup")) {
+    return (
+      <>
+        <LandingPage
+          onGoLogin={() => {
+            setMode("login");
+            setShowLanding(false);
+            limpiarMensajes();
+          }}
+          onGoSignup={() => {
+            setMode("signup");
+            setShowLanding(false);
+            limpiarMensajes();
+          }}
+          onOpenLegal={(tema) => setLegalOpen(tema)}
+        />
+        {legalOpen && <LegalModal tema={legalOpen} onClose={() => setLegalOpen(null)} />}
+      </>
+    );
+  }
+
   // Pantallas de login / registro
   if (!session) {
     return (
       <div style={pageStyle}>
         <style>{fontImport}</style>
         <form onSubmit={handleSubmit} style={cardStyle}>
+          <button
+            type="button"
+            onClick={() => { setShowLanding(true); limpiarMensajes(); }}
+            style={{ ...linkBtnStyle, marginBottom: 16, display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            ← Volver
+          </button>
           <Monogram />
           <div style={{ fontFamily: "Fraunces, serif", fontSize: 24, fontWeight: 600, color: "#ECEFF3", marginBottom: 4 }}>
             Bitácora de trading
@@ -386,6 +418,69 @@ const infoBoxStyle = {
   padding: "8px 12px",
   borderRadius: 8,
   marginBottom: 8,
+};
+
+function LegalModal({ tema, onClose }) {
+  const contenido = {
+    aviso: {
+      titulo: "Aviso legal",
+      texto:
+        "Texto de ejemplo pendiente de completar con los datos reales de tu empresa: razón social, NIF/CIF, domicilio, datos de contacto y, si aplica, datos de inscripción registral. Sustitúyelo por tu información real antes de publicarlo — idealmente revisado por un profesional.",
+    },
+    privacidad: {
+      titulo: "Política de privacidad",
+      texto:
+        "Texto de ejemplo pendiente de completar: qué datos personales recoges (correo, operaciones que registra el usuario), con qué finalidad los tratas, la base legal, cuánto tiempo los conservas y cómo puede alguien ejercer sus derechos de acceso, rectificación o supresión. Sustitúyelo por tu política real antes de publicarlo.",
+    },
+    cookies: {
+      titulo: "Política de cookies",
+      texto:
+        "Texto de ejemplo pendiente de completar: qué cookies usa la web (por ejemplo, las técnicas de sesión que gestiona Supabase Auth) y si hay cookies de analítica o de terceros. Sustitúyelo por tu política real antes de publicarlo.",
+    },
+  }[tema] || { titulo: "Información legal", texto: "Contenido pendiente de redactar." };
+
+  return (
+    <div style={legalBackdropStyle} onClick={onClose}>
+      <div style={legalCardStyle} onClick={(e) => e.stopPropagation()}>
+        <style>{fontImport}</style>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontFamily: "Fraunces, serif", fontSize: 19, fontWeight: 600, color: "#ECEFF3" }}>
+            {contenido.titulo}
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8891A1", cursor: "pointer", fontSize: 16 }}>
+            ✕
+          </button>
+        </div>
+        <div style={{ color: "#B7BFCB", fontSize: 13.5, lineHeight: 1.7, fontFamily: "IBM Plex Sans, sans-serif" }}>
+          {contenido.texto}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const legalBackdropStyle = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(6,9,13,0.75)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+  zIndex: 100,
+};
+
+const legalCardStyle = {
+  width: "100%",
+  maxWidth: 460,
+  background: "linear-gradient(180deg, #171D28, #12161F)",
+  border: "1px solid #262C39",
+  borderRadius: 14,
+  padding: 24,
+  boxSizing: "border-box",
+  maxHeight: "80vh",
+  overflowY: "auto",
+  boxShadow: "0 30px 70px -24px rgba(0,0,0,0.85)",
 };
 
 const Monogram = () => (
