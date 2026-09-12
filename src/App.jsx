@@ -46,8 +46,14 @@ export default function App() {
         if (error) throw error;
       } else if (mode === "signup") {
         const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        setInfo("Cuenta creada. Si tu proyecto de Supabase requiere confirmación por correo, revisa tu bandeja de entrada antes de iniciar sesión.");
+        // Si el error es "ya existe una cuenta con este correo", no lo tratamos
+        // como un error normal: mostramos el mismo mensaje neutro que si el
+        // registro fuera nuevo, para no revelar a quien prueba correos al azar
+        // qué emails tienen cuenta en la Bitácora (enumeración de usuarios).
+        if (error && !esCorreoYaRegistrado(error.message)) throw error;
+        setInfo(
+          "Si el correo es válido, revisa tu bandeja de entrada (y spam) para confirmar tu cuenta, o inicia sesión si ya la tenías creada."
+        );
       }
     } catch (err) {
       setError(traducirError(err.message));
@@ -94,11 +100,14 @@ export default function App() {
     }
   }
 
+  function esCorreoYaRegistrado(msg) {
+    return !!msg && msg.includes("User already registered");
+  }
+
   function traducirError(msg) {
     if (!msg) return "Ha ocurrido un error.";
     if (msg.includes("Invalid login credentials")) return "Correo o contraseña incorrectos.";
     if (msg.includes("Password should be at least")) return "La contraseña debe tener al menos 6 caracteres.";
-    if (msg.includes("User already registered")) return "Ya existe una cuenta con este correo.";
     if (msg.includes("Email not confirmed")) return "Debes confirmar tu correo antes de iniciar sesión.";
     if (msg.includes("For security purposes")) return "Por seguridad, espera unos segundos antes de volver a intentarlo.";
     return msg;
