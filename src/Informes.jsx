@@ -21,7 +21,7 @@ const ESTRATEGIA_REGISTROS_TABLE = "estrategia_registros";
 function fmtMoney(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "\u2212" : "";
-  return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
 }
 function fmtDateShort(iso) {
   if (!iso) return "\u2014";
@@ -302,7 +302,7 @@ export default function Informes() {
                     <BarChart data={weekPorDia} margin={{ top: 4, right: 10, left: 0, bottom: 4 }}>
                       <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="label" stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} />
-                      <YAxis stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} width={56} tickFormatter={(v) => `${v} €`} />
+                      <YAxis stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} width={56} tickFormatter={(v) => `${v} $`} />
                       <ReferenceLine y={0} stroke="#2A3648" />
                       <Tooltip contentStyle={{ background: "#1D2733", border: "1px solid #2A3648", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }} itemStyle={{ color: "#E7ECF2" }} labelStyle={{ color: "#8C99AA", marginBottom: 4 }} formatter={(v, n, p) => [fmtMoney(v), `${p.payload.count} op.`]} />
                       <Bar dataKey="total" radius={[3, 3, 0, 0]}>
@@ -356,7 +356,7 @@ export default function Informes() {
                     <BarChart data={monthPorSemana} margin={{ top: 4, right: 10, left: 0, bottom: 4 }}>
                       <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="inicio" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} tickFormatter={fmtDateShort} />
-                      <YAxis stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} width={56} tickFormatter={(v) => `${v} €`} />
+                      <YAxis stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} width={56} tickFormatter={(v) => `${v} $`} />
                       <ReferenceLine y={0} stroke="#2A3648" />
                       <Tooltip contentStyle={{ background: "#1D2733", border: "1px solid #2A3648", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }} itemStyle={{ color: "#E7ECF2" }} labelStyle={{ color: "#8C99AA", marginBottom: 4 }} labelFormatter={fmtDateShort} formatter={(v, n, p) => [fmtMoney(v), `${p.payload.count} op.`]} />
                       <Bar dataKey="total" radius={[3, 3, 0, 0]}>
@@ -382,7 +382,7 @@ export default function Informes() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={porEstrategia} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 4 }}>
                     <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => `${v} €`} />
+                    <XAxis type="number" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => `${v} $`} />
                     <YAxis type="category" dataKey="estrategia" stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} width={140} />
                     <ReferenceLine x={0} stroke="#2A3648" />
                     <Tooltip contentStyle={{ background: "#1D2733", border: "1px solid #2A3648", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }} itemStyle={{ color: "#E7ECF2" }} labelStyle={{ color: "#8C99AA", marginBottom: 4 }} formatter={(v, n, p) => [fmtMoney(v), `${p.payload.count} op. · ${p.payload.winRate}% win rate`]} />
@@ -424,7 +424,7 @@ export default function Informes() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={porHora} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 4 }}>
                       <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => `${v} €`} />
+                      <XAxis type="number" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => `${v} $`} />
                       <YAxis type="category" dataKey="label" stroke="#8C99AA" tick={{ fontSize: 10.5, fontFamily: "IBM Plex Mono" }} width={100} />
                       <ReferenceLine x={0} stroke="#2A3648" />
                       <Tooltip
@@ -521,7 +521,7 @@ function EquityPanel({ data }) {
               </defs>
               <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="idx" stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} />
-              <YAxis stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} width={70} tickFormatter={(v) => `${v.toLocaleString("es-ES")} €`} />
+              <YAxis stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} width={70} tickFormatter={(v) => `${v.toLocaleString("es-ES")} $`} />
               <ReferenceLine y={0} stroke="#2A3648" />
               <Tooltip contentStyle={{ background: "#1D2733", border: "1px solid #2A3648", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }} itemStyle={{ color: "#E7ECF2" }} labelStyle={{ color: "#8C99AA", marginBottom: 4 }} labelFormatter={(v, p) => (p && p[0] ? fmtDateShort(p[0].payload.fecha) : v)} formatter={(v) => [fmtMoney(v), "Capital acumulado"]} />
               <Area type="monotone" dataKey="capital" stroke="#C9A23F" strokeWidth={2} fill="url(#infGrad)" />

@@ -31,7 +31,7 @@ const TABLE = "trades";
 function fmtMoney(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "\u2212" : "";
-  return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
 }
 
 function fmtDate(d) {
@@ -1004,7 +1004,7 @@ export default function TradingJournal({ session }) {
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div className="jt-risk-field" title="Se pinta en el calendario cuando un día pierde más de este monto">
             <span className="jt-mono jt-risk-label">Riesgo máx/día</span>
-            <span className="jt-mono jt-risk-dollar">€</span>
+            <span className="jt-mono jt-risk-dollar">$</span>
             <input
               className="jt-mono"
               type="number"
@@ -1205,7 +1205,7 @@ export default function TradingJournal({ session }) {
                   <CartesianGrid stroke="#262C39" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="idx" stroke="#8891A1" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} />
                   <YAxis stroke="#8891A1" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} width={70}
-                    tickFormatter={(v) => `${v.toLocaleString("es-ES")} €`} />
+                    tickFormatter={(v) => `${v.toLocaleString("es-ES")} $`} />
                   <ReferenceLine y={0} stroke="#262C39" />
                   <Tooltip
                     contentStyle={{ background: "#171D28", border: "1px solid #262C39", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }}
@@ -1267,7 +1267,7 @@ export default function TradingJournal({ session }) {
                   className={`jt-cal-cell ${cell.data ? (cell.data.total > 0 ? "cal-win" : cell.data.total < 0 ? "cal-loss" : "cal-flat") : ""} ${cell.iso === todayIso ? "today" : ""} ${selectedDays.includes(cell.iso) ? "selected" : ""} ${riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? "risk-exceeded" : ""}`}
                   onClick={() => seleccionarDia(cell.iso)}
                   onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && seleccionarDia(cell.iso)}
-                  title={riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? `Superaste tu riesgo máximo de ${riesgoMaximo} €/día` : undefined}
+                  title={riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? `Superaste tu riesgo máximo de ${riesgoMaximo} $/día` : undefined}
                 >
                   <div className="jt-cal-daynum">{cell.day}</div>
                   {cell.data && (
@@ -1424,7 +1424,7 @@ export default function TradingJournal({ session }) {
                 <input type="number" min="1" value={form.contratos} onChange={(e) => setForm({ ...form, contratos: e.target.value })} />
               </div>
               <div className="jt-field">
-                <label>Resultado neto (€)</label>
+                <label>Resultado neto ($)</label>
                 <input type="number" step="0.01" value={form.resultado} onChange={(e) => setForm({ ...form, resultado: e.target.value })} placeholder="Ej. -45 o 120" />
               </div>
               <div className="jt-field">

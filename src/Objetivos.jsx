@@ -15,7 +15,7 @@ const TIPOS = [
 function fmtMoney(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "\u2212" : "";
-  return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
 }
 function fmtDateShort(iso) {
   if (!iso) return "\u2014";
@@ -256,7 +256,7 @@ function SeccionObjetivos() {
     cargar();
   }
 
-  // Cambia el estado de un objetivo sin meta en € (pendiente / logrado / fallido).
+  // Cambia el estado de un objetivo sin meta en $ (pendiente / logrado / fallido).
   // Si pulsas el estado que ya está activo, vuelve a "pendiente".
   async function cambiarEstado(o, nuevoEstado) {
     const estadoActual = o.estado || "pendiente";
@@ -286,7 +286,7 @@ function SeccionObjetivos() {
     [trades]
   );
 
-  // Estado efectivo de un objetivo, ya sea de meta en € (se calcula solo) o
+  // Estado efectivo de un objetivo, ya sea de meta en $ (se calcula solo) o
   // personal (se marca a mano): "logrado" | "fallido" | "en_curso"
   const estadoDe = useCallback(
     (o) => {
@@ -349,7 +349,7 @@ function SeccionObjetivos() {
         {visibles.length === 0 ? (
           <div className="obj-empty">
             Aún no tienes objetivos {filtroTipo !== "todos" ? `de tipo "${TIPOS.find((t) => t.key === filtroTipo)?.label.toLowerCase()}"` : ""}.<br />
-            Dale a "Nuevo objetivo" para crear el primero — puede ser de trading (con una meta en €) o cualquier otra meta personal.
+            Dale a "Nuevo objetivo" para crear el primero — puede ser de trading (con una meta en $) o cualquier otra meta personal.
           </div>
         ) : (
           visibles.map((o) => {
@@ -426,7 +426,7 @@ function SeccionObjetivos() {
 
             <div className="obj-field">
               <label>Título</label>
-              <input value={fTitulo} onChange={(e) => setFTitulo(e.target.value)} placeholder="Ej. Ganar 2000 € este mes, o Leer 2 libros de trading" />
+              <input value={fTitulo} onChange={(e) => setFTitulo(e.target.value)} placeholder="Ej. Ganar 2000 $ este mes, o Leer 2 libros de trading" />
             </div>
             <div className="obj-field">
               <label>Tipo de objetivo</label>
@@ -445,7 +445,7 @@ function SeccionObjetivos() {
               </div>
             </div>
             <div className="obj-field">
-              <label>Meta en € (opcional — se compara automáticamente con tu P&amp;L real de ese periodo)</label>
+              <label>Meta en $ (opcional — se compara automáticamente con tu P&amp;L real de ese periodo)</label>
               <input type="number" step="0.01" value={fMeta} onChange={(e) => setFMeta(e.target.value)} placeholder="Déjalo vacío si no es un objetivo de trading" />
             </div>
             <div className="obj-field">
