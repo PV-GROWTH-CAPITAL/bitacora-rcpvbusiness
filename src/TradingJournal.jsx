@@ -22,6 +22,8 @@ import {
   ChevronRight,
   ChevronLeft,
   ArrowUpDown,
+  Check,
+  RotateCcw,
 } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 
@@ -126,6 +128,27 @@ export default function TradingJournal({ session }) {
   const [riesgoMaximo, setRiesgoMaximo] = useState(null);
   const [riesgoInput, setRiesgoInput] = useState("");
   const [riesgoLoaded, setRiesgoLoaded] = useState(false);
+  const [cuentasActivas, setCuentasActivas] = useState([]);
+  const [cuentasSel, setCuentasSel] = useState([]);
+  // Valores por cuenta que el usuario ha cambiado a mano; si no hay ajuste, se usa el valor general.
+  const [ajustes, setAjustes] = useState({});
+  const [formError, setFormError] = useState(false);
+
+  const cargarCuentasActivas = useCallback(async () => {
+    const { data, error } = await conReintento(() =>
+      supabase.from("cuentas").select("nombre, activa").order("nombre", { ascending: true })
+    );
+    if (error) {
+      console.error(error);
+      return;
+    }
+    const nombres = (data || []).filter((c) => c.activa !== false && c.nombre).map((c) => c.nombre);
+    setCuentasActivas(Array.from(new Set(nombres)));
+  }, []);
+
+  useEffect(() => {
+    cargarCuentasActivas();
+  }, [cargarCuentasActivas]);
 
   const cargarRiesgo = useCallback(async () => {
     const { data, error } = await conReintento(() =>
@@ -428,9 +451,12 @@ export default function TradingJournal({ session }) {
 
   function openNuevo() {
     setForm({ ...emptyForm, cuenta: filtroCuenta !== "Todas" ? filtroCuenta : "" });
+    setCuentasSel(cuentasActivas.includes(filtroCuenta) ? [filtroCuenta] : []);
+    setAjustes({});
     setEditingId(null);
     setCapturaFile(null);
     setCapturaPreview(null);
+    setFormError(false);
     setShowForm(true);
   }
 
@@ -439,6 +465,7 @@ export default function TradingJournal({ session }) {
     setEditingId(t.id);
     setCapturaFile(null);
     setCapturaPreview(t.captura_url || null);
+    setFormError(false);
     setShowForm(true);
   }
 
@@ -470,7 +497,9 @@ export default function TradingJournal({ session }) {
     return i === -1 ? null : url.slice(i + marca.length);
   }
 
-  async function borrarCapturaStorage(url) {
+  async function borrarCapturaStorage(url, idExcluido) {
+    // Un trade registrado en varias cuentas comparte captura: solo se borra si ya nadie más la usa.
+    if (trades.some((t) => t.id !== idExcluido && t.captura_url === url)) return;
     const path = pathDeCaptura(url);
     if (!path) return;
     try {
@@ -480,8 +509,42 @@ export default function TradingJournal({ session }) {
     }
   }
 
+  // Alta de un trade en varias cuentas a la vez (la edición sigue siendo de una sola cuenta).
+  const modoMultiCuenta = !editingId && cuentasActivas.length > 0;
+  const todasSel = cuentasActivas.length > 0 && cuentasActivas.every((c) => cuentasSel.includes(c));
+
+  function toggleCuenta(c) {
+    setCuentasSel((sel) =>
+      sel.includes(c) ? sel.filter((x) => x !== c) : cuentasActivas.filter((x) => x === c || sel.includes(x))
+    );
+  }
+
+  function toggleTodas() {
+    setCuentasSel(todasSel ? [] : [...cuentasActivas]);
+  }
+
+  function valorCuenta(c, campo) {
+    const ajuste = cuentasSel.length > 1 ? ajustes[c]?.[campo] : undefined;
+    return ajuste !== undefined ? ajuste : form[campo];
+  }
+
+  function ajustarCuenta(c, campo, valor) {
+    setAjustes((a) => ({ ...a, [c]: { ...a[c], [campo]: valor } }));
+  }
+
+  function restablecerCuenta(c) {
+    setAjustes(({ [c]: _, ...resto }) => resto);
+  }
+
+  const puedeGuardar =
+    !!form.fecha &&
+    !subiendoCaptura &&
+    (modoMultiCuenta
+      ? cuentasSel.length > 0 && cuentasSel.every((c) => valorCuenta(c, "resultado") !== "")
+      : form.resultado !== "");
+
   async function guardarForm() {
-    if (!form.fecha || form.resultado === "") return;
+    if (!puedeGuardar) return;
 
     let capturaUrlFinal = form.captura_url || null;
     const urlAnterior = editingId ? (trades.find((t) => t.id === editingId)?.captura_url || null) : null;
@@ -498,6 +561,7 @@ export default function TradingJournal({ session }) {
       if (uploadError) {
         console.error(uploadError);
         setSaveError(true);
+        setFormError(true);
         return;
       }
       const { data: pub } = supabase.storage.from("capturas").getPublicUrl(path);
@@ -521,25 +585,35 @@ export default function TradingJournal({ session }) {
     };
 
     setSaveError(false);
+    setFormError(false);
     if (editingId) {
       const { error } = await supabase.from(TABLE).update(registro).eq("id", editingId);
       if (error) {
         console.error(error);
         setSaveError(true);
+        setFormError(true);
         return;
       }
     } else {
-      const { error } = await supabase
-        .from(TABLE)
-        .insert({ ...registro, user_id: session.user.id });
+      const filas = modoMultiCuenta
+        ? cuentasSel.map((c) => ({
+            ...registro,
+            cuenta: c,
+            resultado: Number(valorCuenta(c, "resultado")),
+            contratos: Number(valorCuenta(c, "contratos")) || 1,
+            user_id: session.user.id,
+          }))
+        : [{ ...registro, user_id: session.user.id }];
+      const { error } = await supabase.from(TABLE).insert(filas);
       if (error) {
         console.error(error);
         setSaveError(true);
+        setFormError(true);
         return;
       }
     }
     if (urlAnterior && urlAnterior !== capturaUrlFinal) {
-      borrarCapturaStorage(urlAnterior);
+      borrarCapturaStorage(urlAnterior, editingId);
     }
     await cargarTrades();
     cerrarForm();
@@ -554,7 +628,7 @@ export default function TradingJournal({ session }) {
       setSaveError(true);
       return;
     }
-    if (trade && trade.captura_url) borrarCapturaStorage(trade.captura_url);
+    if (trade && trade.captura_url) borrarCapturaStorage(trade.captura_url, id);
     if (expandedId === id) setExpandedId(null);
     await cargarTrades();
   }
@@ -835,6 +909,58 @@ export default function TradingJournal({ session }) {
         }
         .jt-field textarea { resize: vertical; min-height: 60px; }
         .jt-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+        .jt-acc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+        .jt-acc-count { margin-left: 6px; font-size: 11px; color: var(--accent); }
+        .jt-link-btn {
+          background: none; border: none; padding: 2px 0; cursor: pointer;
+          font-size: 12px; font-family: inherit; color: var(--accent);
+          border-bottom: 1px solid transparent; transition: border-color 0.15s ease, color 0.15s ease;
+        }
+        .jt-link-btn:hover { color: #D8B876; border-bottom-color: var(--accent-dim); }
+        .jt-link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+        .jt-acc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+        .jt-acc-chip {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 6px 12px 6px 8px; border-radius: 999px; cursor: pointer;
+          font-size: 12.5px; font-family: inherit;
+          border: 1px solid var(--border); background: var(--surface-2); color: var(--text-dim);
+          transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+        }
+        .jt-acc-chip:hover { border-color: var(--accent-dim); color: var(--text); }
+        .jt-acc-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .jt-acc-chip.on {
+          color: var(--text); border-color: rgba(198,161,90,0.55);
+          background: linear-gradient(180deg, rgba(198,161,90,0.14), rgba(198,161,90,0.05));
+        }
+        .jt-acc-check {
+          width: 15px; height: 15px; border-radius: 4px; flex: none;
+          display: inline-flex; align-items: center; justify-content: center;
+          border: 1px solid var(--border); color: #1A1408;
+          transition: background 0.15s ease, border-color 0.15s ease;
+        }
+        .jt-acc-chip.on .jt-acc-check { background: var(--accent); border-color: var(--accent); }
+        .jt-acc-hint { font-size: 11.5px; color: var(--text-dim); }
+        .jt-acc-list {
+          margin-top: 6px; border: 1px solid var(--border); border-radius: 10px;
+          background: rgba(10,13,19,0.35); padding: 4px 10px;
+        }
+        .jt-acc-row {
+          display: grid; grid-template-columns: minmax(0, 1fr) 76px 112px 26px;
+          gap: 8px; align-items: center; padding: 6px 0;
+        }
+        .jt-acc-row + .jt-acc-row { border-top: 1px solid rgba(38,44,57,0.6); }
+        .jt-acc-row-head span { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+        .jt-acc-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .jt-field .jt-acc-row input { padding: 6px 8px; min-width: 0; width: 100%; }
+        .jt-field .jt-acc-row input.ajustada { border-color: var(--accent-dim); }
+        .jt-acc-reset:disabled { opacity: 0; pointer-events: none; }
+        .jt-acc-total {
+          display: flex; justify-content: space-between; align-items: center;
+          border-top: 1px solid var(--border); margin-top: 2px; padding: 8px 0 4px;
+          font-size: 12px; color: var(--text-dim);
+        }
+        .jt-acc-total .win { color: #4CBB93; }
+        .jt-acc-total .loss { color: #D97563; }
         .jt-error-banner {
           background: var(--loss-dim);
           color: #FBD8D2;
@@ -975,6 +1101,9 @@ export default function TradingJournal({ session }) {
           .jt-cal-count { display: none; }
           .jt-cal-weekday { font-size: 9px; }
           .jt-modal { padding: 16px; max-height: 90vh; overflow-y: auto; }
+          .jt-acc-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 26px; gap: 4px 6px; }
+          .jt-acc-name { grid-column: 1 / -1; white-space: normal; overflow-wrap: anywhere; }
+          .jt-acc-row-head span:first-child { display: none; }
           table.jt-table { font-size: 12px; }
           .jt-table th, .jt-table td { padding: 8px 6px; }
         }
@@ -1401,13 +1530,15 @@ export default function TradingJournal({ session }) {
                 <label>Fecha</label>
                 <input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
               </div>
-              <div className="jt-field">
-                <label>Cuenta</label>
-                <input list="jt-cuentas" value={form.cuenta} onChange={(e) => setForm({ ...form, cuenta: e.target.value })} placeholder="Ej. Fondeo 1" />
-                <datalist id="jt-cuentas">
-                  {cuentas.filter((c) => c !== "Todas").map((c, i) => <option key={i} value={c} />)}
-                </datalist>
-              </div>
+              {!modoMultiCuenta && (
+                <div className="jt-field">
+                  <label>Cuenta</label>
+                  <input list="jt-cuentas" value={form.cuenta} onChange={(e) => setForm({ ...form, cuenta: e.target.value })} placeholder="Ej. Fondeo 1" />
+                  <datalist id="jt-cuentas">
+                    {cuentas.filter((c) => c !== "Todas").map((c, i) => <option key={i} value={c} />)}
+                  </datalist>
+                </div>
+              )}
               <div className="jt-field">
                 <label>Instrumento</label>
                 <input value={form.instrumento} onChange={(e) => setForm({ ...form, instrumento: e.target.value })} placeholder="MNQ" />
@@ -1439,7 +1570,7 @@ export default function TradingJournal({ session }) {
                 <label>Hora de salida (opcional)</label>
                 <input type="time" step="1" value={form.hora_salida} onChange={(e) => setForm({ ...form, hora_salida: e.target.value })} />
               </div>
-              <div className="jt-field">
+              <div className="jt-field" style={modoMultiCuenta ? { gridColumn: "1 / -1" } : undefined}>
                 <label>Estrategia / setup</label>
                 <input list="jt-estrategias" value={form.estrategia} onChange={(e) => setForm({ ...form, estrategia: e.target.value })} placeholder="Ej. Ruptura de apertura" />
                 <datalist id="jt-estrategias">
@@ -1447,6 +1578,86 @@ export default function TradingJournal({ session }) {
                 </datalist>
               </div>
             </div>
+
+            {modoMultiCuenta && (
+              <div className="jt-field">
+                <div className="jt-acc-head">
+                  <label>
+                    Cuentas
+                    <span className="jt-mono jt-acc-count">{cuentasSel.length}/{cuentasActivas.length}</span>
+                  </label>
+                  <button type="button" className="jt-link-btn" onClick={toggleTodas}>
+                    {todasSel ? "Quitar todas" : "Seleccionar todas"}
+                  </button>
+                </div>
+                <div className="jt-acc-chips" role="group" aria-label="Cuentas activas">
+                  {cuentasActivas.map((c) => {
+                    const on = cuentasSel.includes(c);
+                    return (
+                      <button key={c} type="button" className={`jt-acc-chip${on ? " on" : ""}`} aria-pressed={on} onClick={() => toggleCuenta(c)}>
+                        <span className="jt-acc-check">{on && <Check size={11} strokeWidth={3} />}</span>
+                        {c}
+                      </button>
+                    );
+                  })}
+                </div>
+                {cuentasSel.length === 0 && <div className="jt-acc-hint">Selecciona al menos una cuenta.</div>}
+                {cuentasSel.length > 1 && (
+                  <div className="jt-acc-list">
+                    <div className="jt-acc-row jt-acc-row-head">
+                      <span>Cuenta</span>
+                      <span>Contratos</span>
+                      <span>Resultado ($)</span>
+                      <span />
+                    </div>
+                    {cuentasSel.map((c) => {
+                      const ajustada = ajustes[c] !== undefined;
+                      return (
+                        <div key={c} className="jt-acc-row">
+                          <span className="jt-acc-name" title={c}>{c}</span>
+                          <input
+                            type="number"
+                            min="1"
+                            className={`jt-mono${ajustes[c]?.contratos !== undefined ? " ajustada" : ""}`}
+                            value={valorCuenta(c, "contratos")}
+                            onChange={(e) => ajustarCuenta(c, "contratos", e.target.value)}
+                            aria-label={`Contratos en ${c}`}
+                          />
+                          <input
+                            type="number"
+                            step="0.01"
+                            className={`jt-mono${ajustes[c]?.resultado !== undefined ? " ajustada" : ""}`}
+                            value={valorCuenta(c, "resultado")}
+                            onChange={(e) => ajustarCuenta(c, "resultado", e.target.value)}
+                            placeholder="—"
+                            aria-label={`Resultado en ${c}`}
+                          />
+                          <button
+                            type="button"
+                            className="jt-icon-btn jt-acc-reset"
+                            onClick={() => restablecerCuenta(c)}
+                            disabled={!ajustada}
+                            title="Volver al valor general"
+                            aria-label={`Volver al valor general en ${c}`}
+                          >
+                            <RotateCcw size={13} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {(() => {
+                      const total = cuentasSel.reduce((acc, c) => acc + (Number(valorCuenta(c, "resultado")) || 0), 0);
+                      return (
+                        <div className="jt-acc-total">
+                          <span>Total en {cuentasSel.length} cuentas</span>
+                          <span className={`jt-mono ${total > 0 ? "win" : total < 0 ? "loss" : ""}`}>{fmtMoney(total)}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="jt-field">
               <label>Captura de la operación (opcional)</label>
@@ -1474,10 +1685,20 @@ export default function TradingJournal({ session }) {
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Contexto, gestión de riesgo, lecciones..." />
             </div>
 
+            {formError && (
+              <div className="jt-error-banner">No se pudo guardar la operación. Revisa tu conexión e inténtalo de nuevo.</div>
+            )}
+
             <div className="jt-modal-actions">
               <button className="jt-btn" onClick={cerrarForm}>Cancelar</button>
-              <button className="jt-btn primary" onClick={guardarForm} disabled={!form.fecha || form.resultado === "" || subiendoCaptura}>
-                {subiendoCaptura ? "Subiendo imagen..." : editingId ? "Guardar cambios" : "Registrar operación"}
+              <button className="jt-btn primary" onClick={guardarForm} disabled={!puedeGuardar}>
+                {subiendoCaptura
+                  ? "Subiendo imagen..."
+                  : editingId
+                  ? "Guardar cambios"
+                  : modoMultiCuenta && cuentasSel.length > 1
+                  ? `Registrar en ${cuentasSel.length} cuentas`
+                  : "Registrar operación"}
               </button>
             </div>
           </div>
