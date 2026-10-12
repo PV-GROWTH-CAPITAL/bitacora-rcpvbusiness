@@ -5,6 +5,8 @@ import {
   calcularDD,
   calcularTarget,
   calcularDiasRentables,
+  calcularColchon,
+  calcularConsistencia,
   montoRetiroUsd,
   tieneMontoUsd,
   TAMANO_POR_DEFECTO,
@@ -13,6 +15,8 @@ import {
   TARGET_EVALUACION,
   DIAS_RENTABLES_MIN_PNL,
   DIAS_RENTABLES_OBJETIVO,
+  COLCHON_POR_DEFECTO,
+  CONSISTENCIA_PCT_POR_DEFECTO,
 } from "./calculoCuentas";
 
 const CUENTAS_TABLE = "cuentas";
@@ -21,6 +25,7 @@ const TRADES_TABLE = "trades";
 const RETIROS_TABLE = "retiros";
 
 const TIPO_LABEL = { funded: "FUNDED", evaluacion: "EVALUACIÓN" };
+const MODO_PAYOUT_LABEL = { dias_minimos: "Días mínimos", colchon: "Colchón" };
 const MOTIVOS_CIERRE = [
   { value: "quemada", label: "Quemada" },
   { value: "pasada_a_funded", label: "Pasada a funded" },
@@ -54,6 +59,17 @@ function fmtPct(n) {
   const v = Number(n);
   const sign = v > 0 ? "+" : v < 0 ? "−" : "";
   return `${sign}${Math.abs(v).toFixed(2)}%`;
+}
+
+// Importes de reglas (ej. "150 $"): sin decimales si son enteros.
+function fmtUsdRegla(n) {
+  const v = Number(n) || 0;
+  return Number.isInteger(v) ? `${v.toLocaleString("es-ES", { useGrouping: "always" })} $` : fmtUsd(v);
+}
+
+// Porcentajes sin signo (consistencia).
+function fmtPctSimple(n) {
+  return `${(Number(n) || 0).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %`;
 }
 
 function fmtDate(d) {
@@ -94,12 +110,32 @@ function ddColor(pct) {
 
 // Formulario mínimo: el DD trailing (2000 $) y el target de evaluación (+3000 $) son fijos y se calculan solos.
 // En FUNDED el tamaño no se pide (50000 por defecto, o el que ya tenga guardado la cuenta).
+// Requisito de payout (solo FUNDED) y consistencia (ambos tipos) se configuran por cuenta;
+// las columnas vacías equivalen a los valores por defecto, que es como funcionaba antes.
 const emptyForm = {
   nombre: "",
   tipo: "funded",
   tamano: String(TAMANO_POR_DEFECTO),
   dd_diario: "",
+  modo_payout: "dias_minimos",
+  dias_minimos: String(DIAS_RENTABLES_OBJETIVO),
+  beneficio_minimo_dia: String(DIAS_RENTABLES_MIN_PNL),
+  colchon: String(COLCHON_POR_DEFECTO),
+  consistencia_activa: false,
+  consistencia_pct: String(CONSISTENCIA_PCT_POR_DEFECTO),
 };
+
+// Configuración de payout y consistencia de una cuenta, con los valores por defecto para columnas vacías.
+function configCuenta(c) {
+  return {
+    modoPayout: c.modo_payout === "colchon" ? "colchon" : "dias_minimos",
+    diasObjetivo: Number(c.dias_minimos) > 0 ? Math.round(Number(c.dias_minimos)) : DIAS_RENTABLES_OBJETIVO,
+    minPnlDia: c.beneficio_minimo_dia != null && Number(c.beneficio_minimo_dia) >= 0 ? Number(c.beneficio_minimo_dia) : DIAS_RENTABLES_MIN_PNL,
+    colchon: Number(c.colchon) > 0 ? Number(c.colchon) : COLCHON_POR_DEFECTO,
+    consistenciaActiva: c.consistencia_activa === true,
+    consistenciaPct: Number(c.consistencia_pct) > 0 ? Number(c.consistencia_pct) : CONSISTENCIA_PCT_POR_DEFECTO,
+  };
+}
 
 export default function CuentasActivas({ session }) {
   const [cuentas, setCuentas] = useState([]);
@@ -151,9 +187,22 @@ export default function CuentasActivas({ session }) {
       const retirosUsd = retirosCuenta.map((r) => ({ fecha: r.fecha, monto: montoRetiroUsd(r) }));
 
       // Las columnas dd_maximo y target se ignoran: distancia 2000 y target +3000 fijos.
+      const config = configCuenta(c);
       const dd = calcularDD({ tamano: c.tamano, tipo, trades: tradesCuenta, retiros: retirosUsd, hoy: todayIso });
-      const rentables = calcularDiasRentables({ trades: tradesCuenta, retiros: retirosUsd, hoy: todayIso });
+      const rentables = calcularDiasRentables({ trades: tradesCuenta, retiros: retirosUsd, hoy: todayIso, minPnl: config.minPnlDia });
       const target = tipo === "evaluacion" ? calcularTarget({ tamano: dd.tamano, balanceActual: dd.balanceActual }) : null;
+      const colchon =
+        tipo === "funded" && config.modoPayout === "colchon"
+          ? calcularColchon({ tamano: dd.tamano, balanceInicial: c.balance_inicial, balanceActual: dd.balanceActual, colchon: config.colchon })
+          : null;
+      // En funded la consistencia se mide en el ciclo actual (desde el último retiro); en evaluación, en todo el historial.
+      const consistencia = config.consistenciaActiva
+        ? calcularConsistencia({
+            trades: tradesCuenta,
+            desde: tipo === "funded" ? rentables.ultimoRetiro : null,
+            pct: config.consistenciaPct,
+          })
+        : null;
 
       const { pnlTotal, totalRetirado } = dd;
       const pnlPct = (pnlTotal / dd.tamano) * 100;
@@ -165,8 +214,11 @@ export default function CuentasActivas({ session }) {
       return {
         ...c,
         tipo,
+        config,
         dd,
         rentables,
+        colchon,
+        consistencia,
         pnlTotal,
         pnlPct,
         totalRetirado,
@@ -217,19 +269,50 @@ export default function CuentasActivas({ session }) {
       tipo: c.tipo,
       tamano: String(c.dd.tamano),
       dd_diario: c.dd_diario ?? "",
+      modo_payout: c.config.modoPayout,
+      dias_minimos: String(c.config.diasObjetivo),
+      beneficio_minimo_dia: String(c.config.minPnlDia),
+      colchon: String(c.config.colchon),
+      consistencia_activa: c.config.consistenciaActiva,
+      consistencia_pct: String(c.config.consistenciaPct),
     });
     setShowForm(true);
   }
 
+  // Errores de los campos de payout/consistencia que se ven en el formulario (null si no hay).
+  const formErrores = useMemo(() => {
+    const e = {};
+    const esFunded = form.tipo === "funded";
+    if (esFunded && form.modo_payout === "dias_minimos") {
+      const dias = Number(form.dias_minimos);
+      if (!Number.isInteger(dias) || dias < 1) e.dias_minimos = "Al menos 1 día (número entero).";
+      if (form.beneficio_minimo_dia === "" || !(Number(form.beneficio_minimo_dia) >= 0)) e.beneficio_minimo_dia = "Indica un importe (0 o más).";
+    }
+    if (esFunded && form.modo_payout === "colchon" && !(Number(form.colchon) > 0)) e.colchon = "Indica un colchón mayor que 0.";
+    if (form.consistencia_activa) {
+      const pct = Number(form.consistencia_pct);
+      if (form.consistencia_pct === "" || !(pct > 0 && pct <= 100)) e.consistencia_pct = "Mayor que 0 y como máximo 100.";
+    }
+    return e;
+  }, [form]);
+  const formValido = !!form.nombre.trim() && Object.keys(formErrores).length === 0;
+
   async function guardar() {
-    if (!form.nombre.trim()) return;
+    if (!formValido) return;
     setBusy(true);
     // No se tocan dd_maximo ni target: ya no se usan.
+    // Los campos de payout se guardan aunque el modo activo no los use, para no perderlos al cambiar de modo.
     const registro = {
       nombre: form.nombre.trim(),
       tipo: form.tipo,
       tamano: Number(form.tamano) > 0 ? Number(form.tamano) : TAMANO_POR_DEFECTO,
       dd_diario: numOrNull(form.dd_diario),
+      modo_payout: form.modo_payout === "colchon" ? "colchon" : "dias_minimos",
+      dias_minimos: Number(form.dias_minimos) >= 1 ? Math.round(Number(form.dias_minimos)) : DIAS_RENTABLES_OBJETIVO,
+      beneficio_minimo_dia: Number(form.beneficio_minimo_dia) >= 0 && form.beneficio_minimo_dia !== "" ? Number(form.beneficio_minimo_dia) : DIAS_RENTABLES_MIN_PNL,
+      colchon: Number(form.colchon) > 0 ? Number(form.colchon) : COLCHON_POR_DEFECTO,
+      consistencia_activa: !!form.consistencia_activa,
+      consistencia_pct: Number(form.consistencia_pct) > 0 && Number(form.consistencia_pct) <= 100 ? Number(form.consistencia_pct) : CONSISTENCIA_PCT_POR_DEFECTO,
     };
     const ok = await ejecutar(() =>
       editId
@@ -326,8 +409,9 @@ export default function CuentasActivas({ session }) {
   // Lo secundario va en "Detalles", cerrado por defecto.
   function renderCuenta(c) {
     const esFunded = c.tipo === "funded";
-    const { dd, target } = c;
+    const { dd, target, colchon, consistencia } = c;
     const { dias, ultimoRetiro, pnlHoy } = c.rentables;
+    const { diasObjetivo, minPnlDia } = c.config;
     const color = margenColor(dd.margenRatio);
     const barPct = Math.max(0, Math.min(100, dd.margenRatio * 100));
     const abierto = !!detallesAbiertos[c.id];
@@ -417,22 +501,64 @@ export default function CuentasActivas({ session }) {
               </div>
             )}
 
-            {esFunded && (
+            {esFunded && colchon && (
+              <div className="cta-block">
+                <div className="cta-block-head">
+                  <span>Colchón para retirar ({fmtUsd(colchon.umbral)})</span>
+                  <span className="cta-mono" style={{ color: colchon.alcanzado ? "var(--win)" : "var(--text)" }}>
+                    {colchon.alcanzado ? "✓ Puedes retirar" : `faltan ${fmtUsd(colchon.restante)}`}
+                  </span>
+                </div>
+                <div className="cta-bar">
+                  <div className="cta-bar-fill" style={{ width: `${colchon.progreso * 100}%`, background: colchon.alcanzado ? "var(--win)" : "var(--accent)" }} />
+                </div>
+                <div className="cta-block-sub">
+                  Balance de partida {fmtUsd(colchon.partida)} + colchón {fmtUsd(colchon.colchon)}
+                </div>
+              </div>
+            )}
+
+            {esFunded && !colchon && (
               <div className="cta-block">
                 <div className="cta-block-head">
                   <span>
-                    Días rentables (≥ {DIAS_RENTABLES_MIN_PNL} $){ultimoRetiro ? ` desde el retiro del ${fmtDate(ultimoRetiro)}` : ""}
+                    Días rentables (≥ {fmtUsdRegla(minPnlDia)}){ultimoRetiro ? ` desde el retiro del ${fmtDate(ultimoRetiro)}` : ""}
                   </span>
-                  <span className="cta-mono" style={{ color: dias >= DIAS_RENTABLES_OBJETIVO ? "var(--win)" : "var(--text)" }}>
-                    {Math.min(dias, DIAS_RENTABLES_OBJETIVO)}/{DIAS_RENTABLES_OBJETIVO}{dias >= DIAS_RENTABLES_OBJETIVO ? " ✓" : ""}
+                  <span className="cta-mono" style={{ color: dias >= diasObjetivo ? "var(--win)" : "var(--text)" }}>
+                    {Math.min(dias, diasObjetivo)}/{diasObjetivo}{dias >= diasObjetivo ? " ✓" : ""}
                   </span>
                 </div>
                 <div className="cta-dots">
-                  {Array.from({ length: DIAS_RENTABLES_OBJETIVO }, (_, i) => (
+                  {Array.from({ length: diasObjetivo }, (_, i) => (
                     <span key={i} className={`cta-dot ${i < dias ? "on" : ""}`} />
                   ))}
                   {pnlHoy > 0 && <span className="cta-hoy-curso cta-mono">hoy en curso: {fmtMoney(pnlHoy)}</span>}
                 </div>
+              </div>
+            )}
+
+            {consistencia && (
+              <div className="cta-block">
+                <div className="cta-block-head">
+                  <span>
+                    Consistencia (mejor día ≤ {fmtPctSimple(consistencia.pct)}){esFunded && ultimoRetiro ? ` desde el retiro del ${fmtDate(ultimoRetiro)}` : ""}
+                  </span>
+                  {consistencia.cumple == null ? (
+                    <span className="cta-mono" style={{ color: "var(--text-dim)" }}>Sin beneficio aún</span>
+                  ) : (
+                    <span className="cta-mono" style={{ color: consistencia.cumple ? "var(--win)" : "var(--loss)" }}>
+                      {fmtPctSimple(consistencia.pctActual)} {consistencia.cumple ? "✓" : "✗"}
+                    </span>
+                  )}
+                </div>
+                {consistencia.cumple != null && (
+                  <div className="cta-block-sub">
+                    Mejor día {fmtMoney(consistencia.mejorDia)} ({fmtDate(consistencia.mejorFecha)}) de {fmtMoney(consistencia.total)} de beneficio.
+                    {!consistencia.cumple && (
+                      <> Faltan <b className="cta-mono" style={{ color: "var(--text)" }}>{fmtUsd(consistencia.faltaBeneficio)}</b> de beneficio en días que no superen el mejor.</>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -620,6 +746,12 @@ export default function CuentasActivas({ session }) {
         .cta-field-row { display: flex; gap: 10px; }
         .cta-field-row .cta-field { flex: 1; min-width: 0; }
         .cta-field-hint { font-size: 11.5px; color: var(--text-dim); margin: -6px 0 14px; line-height: 1.5; }
+        .cta-field-error { font-size: 11px; color: var(--loss); }
+        .cta-field input[aria-invalid="true"] { border-color: var(--loss-dim); }
+        .cta-form-section {
+          font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim);
+          border-top: 1px solid var(--border); padding-top: 14px; margin: 4px 0 10px;
+        }
         .cta-seg { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
         .cta-seg button { flex: 1; background: none; border: none; color: var(--text-dim); font-family: inherit; font-size: 12.5px; font-weight: 500; padding: 7px 6px; border-radius: 6px; cursor: pointer; }
         .cta-seg button:hover { color: var(--text); }
@@ -720,9 +852,73 @@ export default function CuentasActivas({ session }) {
                 : `. Target: +${fmtUsd(TARGET_EVALUACION)} sobre el tamaño.`}
             </div>
 
+            {form.tipo === "funded" && (
+              <>
+                <div className="cta-form-section">Requisito de payout</div>
+                <div className="cta-field">
+                  <div className="cta-seg">
+                    {Object.entries(MODO_PAYOUT_LABEL).map(([value, label]) => (
+                      <button type="button" key={value} className={form.modo_payout === value ? "active" : ""} onClick={() => setForm({ ...form, modo_payout: value })}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {form.modo_payout === "dias_minimos" ? (
+                  <>
+                    <div className="cta-field-row">
+                      <div className="cta-field">
+                        <label>Días requeridos</label>
+                        <input type="number" min="1" step="1" inputMode="numeric" value={form.dias_minimos} onChange={(e) => setForm({ ...form, dias_minimos: e.target.value })} aria-invalid={!!formErrores.dias_minimos} />
+                        {formErrores.dias_minimos && <span className="cta-field-error">{formErrores.dias_minimos}</span>}
+                      </div>
+                      <div className="cta-field">
+                        <label>Beneficio mínimo por día $</label>
+                        <input type="number" min="0" step="0.01" inputMode="decimal" value={form.beneficio_minimo_dia} onChange={(e) => setForm({ ...form, beneficio_minimo_dia: e.target.value })} aria-invalid={!!formErrores.beneficio_minimo_dia} />
+                        {formErrores.beneficio_minimo_dia && <span className="cta-field-error">{formErrores.beneficio_minimo_dia}</span>}
+                      </div>
+                    </div>
+                    <div className="cta-field-hint">Días cerrados con al menos ese beneficio. El contador vuelve a 0 con cada retiro.</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="cta-field">
+                      <label>Colchón $</label>
+                      <input type="number" min="0" step="0.01" inputMode="decimal" value={form.colchon} onChange={(e) => setForm({ ...form, colchon: e.target.value })} placeholder={String(COLCHON_POR_DEFECTO)} aria-invalid={!!formErrores.colchon} />
+                      {formErrores.colchon && <span className="cta-field-error">{formErrores.colchon}</span>}
+                    </div>
+                    <div className="cta-field-hint">Podrás retirar cuando el balance supere el balance de partida + el colchón.</div>
+                  </>
+                )}
+              </>
+            )}
+
+            <div className="cta-form-section">Regla de consistencia</div>
+            <div className="cta-field">
+              <div className="cta-seg">
+                {[[false, "Desactivada"], [true, "Activada"]].map(([value, label]) => (
+                  <button type="button" key={label} className={form.consistencia_activa === value ? "active" : ""} onClick={() => setForm({ ...form, consistencia_activa: value })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {form.consistencia_activa && (
+              <>
+                <div className="cta-field">
+                  <label>Máximo del mejor día (% del beneficio total)</label>
+                  <input type="number" min="1" max="100" step="1" inputMode="decimal" value={form.consistencia_pct} onChange={(e) => setForm({ ...form, consistencia_pct: e.target.value })} placeholder={String(CONSISTENCIA_PCT_POR_DEFECTO)} aria-invalid={!!formErrores.consistencia_pct} />
+                  {formErrores.consistencia_pct && <span className="cta-field-error">{formErrores.consistencia_pct}</span>}
+                </div>
+                <div className="cta-field-hint">
+                  El mejor día no puede superar este % del beneficio total{form.tipo === "funded" ? " desde el último retiro" : ""}.
+                </div>
+              </>
+            )}
+
             <div className="cta-modal-actions">
               <button className="cta-btn" onClick={() => setShowForm(false)}>Cancelar</button>
-              <button className="cta-btn primary" onClick={guardar} disabled={busy || !form.nombre.trim()}>
+              <button className="cta-btn primary" onClick={guardar} disabled={busy || !formValido}>
                 {busy ? "Guardando..." : "Guardar"}
               </button>
             </div>

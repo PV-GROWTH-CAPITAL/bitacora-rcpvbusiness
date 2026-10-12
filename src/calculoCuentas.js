@@ -8,6 +8,8 @@ export const DD_FACTOR_BLOQUEO = 1.002; // en FUNDED el suelo se fija en tamano 
 export const TARGET_EVALUACION = 3000; // $ sobre el tamaño para pasar una evaluación (la columna target se ignora)
 export const DIAS_RENTABLES_MIN_PNL = 150; // $ mínimos de P&L para que un día cuente como rentable
 export const DIAS_RENTABLES_OBJETIVO = 5; // días rentables necesarios (se reinicia con cada retiro)
+export const COLCHON_POR_DEFECTO = 2100; // $ sobre el tamaño a partir de los que una funded en modo "colchón" puede retirar
+export const CONSISTENCIA_PCT_POR_DEFECTO = 50; // % máximo del beneficio total que puede aportar el mejor día
 
 const aCentimos = (n) => Math.round((Number(n) || 0) * 100);
 const aDolares = (c) => c / 100;
@@ -115,4 +117,57 @@ export function calcularDiasRentables({ trades = [], retiros = [], hoy, minPnl =
   });
 
   return { dias, ultimoRetiro, pnlHoy: aDolares(pnlPorDia.get(hoy) || 0) };
+}
+
+// Payout por colchón: se puede retirar cuando el balance supera balance de partida + colchon.
+// El balance de partida es balance_inicial; si la cuenta no lo tiene, el tamaño.
+export function calcularColchon({ tamano, balanceInicial = null, balanceActual, colchon = COLCHON_POR_DEFECTO }) {
+  const sinInicial = balanceInicial == null || balanceInicial === "";
+  const partidaC = sinInicial ? tamanoEnCentimos(tamano) : aCentimos(balanceInicial);
+  const colchonC = aCentimos(Number(colchon) > 0 ? colchon : COLCHON_POR_DEFECTO);
+  const umbralC = partidaC + colchonC;
+  const balanceC = aCentimos(balanceActual);
+  return {
+    partida: aDolares(partidaC),
+    colchon: aDolares(colchonC),
+    umbral: aDolares(umbralC),
+    restante: aDolares(Math.max(0, umbralC - balanceC)),
+    progreso: Math.max(0, Math.min(1, (balanceC - partidaC) / colchonC)),
+    alcanzado: balanceC > umbralC,
+  };
+}
+
+// Regla de consistencia: el mejor día no puede superar pct % del beneficio total.
+// Cuenta los días con fecha >= desde (si se da), incluido hoy. "faltaBeneficio" es el beneficio
+// adicional necesario para cumplir, suponiendo que llega en días que no superan el mejor día.
+// Con beneficio total ≤ 0 no se calcula nada: cumple = null ("sin beneficio aún"), no incumplida.
+export function calcularConsistencia({ trades = [], desde = null, pct = CONSISTENCIA_PCT_POR_DEFECTO }) {
+  const pctNum = Number(pct) > 0 ? Math.min(100, Number(pct)) : CONSISTENCIA_PCT_POR_DEFECTO;
+  const pnlPorDia = sumarPorFecha(desde ? trades.filter((t) => t.fecha && t.fecha >= desde) : trades, "resultado");
+
+  let totalC = 0;
+  let mejorC = 0;
+  let mejorFecha = null;
+  pnlPorDia.forEach((pnlC, fecha) => {
+    totalC += pnlC;
+    if (pnlC > mejorC) {
+      mejorC = pnlC;
+      mejorFecha = fecha;
+    }
+  });
+
+  if (totalC <= 0) {
+    return { pct: pctNum, total: aDolares(totalC), mejorDia: aDolares(mejorC), mejorFecha, pctActual: null, cumple: null, faltaBeneficio: 0 };
+  }
+
+  const necesarioC = Math.ceil((mejorC * 100) / pctNum);
+  return {
+    pct: pctNum,
+    total: aDolares(totalC),
+    mejorDia: aDolares(mejorC),
+    mejorFecha,
+    pctActual: (mejorC / totalC) * 100,
+    cumple: totalC >= necesarioC,
+    faltaBeneficio: aDolares(Math.max(0, necesarioC - totalC)),
+  };
 }
