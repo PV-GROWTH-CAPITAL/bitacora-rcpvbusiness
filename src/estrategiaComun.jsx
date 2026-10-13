@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { X } from "lucide-react";
+import { urlCaptura, fmtHora } from "./estrategiaChecks";
 
 export const SESION_NOMBRES = { london: "LONDON", new_york: "NEW YORK" };
 
@@ -62,6 +64,53 @@ export function StatCards({ stats }) {
         <div className="est-stat-value-sm">{stats.peor ? stats.peor.texto : "—"}</div>
         <div className="est-stat-sub">{stats.peor ? `falló ${stats.peor.count} veces` : "Aún sin fallos registrados"}</div>
       </div>
+    </div>
+  );
+}
+
+// Captura ampliada a pantalla completa. Se cierra con Esc o con un clic fuera de la imagen.
+export function VisorCaptura({ path, titulo, onCerrar }) {
+  useEffect(() => {
+    if (!path) return;
+    const onKey = (e) => e.key === "Escape" && onCerrar();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [path, onCerrar]);
+
+  if (!path) return null;
+  return (
+    <div className="est-visor" onClick={onCerrar} role="dialog" aria-label={titulo || "Captura"}>
+      <button className="est-visor-cerrar" onClick={onCerrar} aria-label="Cerrar">
+        <X size={18} />
+      </button>
+      <img src={urlCaptura(path)} alt={titulo || "Captura"} onClick={(e) => e.stopPropagation()} />
+      {titulo && <div className="est-visor-titulo">{titulo}</div>}
+    </div>
+  );
+}
+
+// Detalle de solo lectura de los checks de un registro (ver checksDeRegistro).
+export function DetalleChecks({ checks, onAmpliar }) {
+  if (checks.length === 0) return <div className="est-detalle-vacio">Este registro no tiene checks guardados.</div>;
+  return (
+    <div className="est-detalle">
+      {checks.map((c) => (
+        <div key={c.key} className={`est-detalle-row ${c.cumplido ? "done" : ""}`}>
+          <span className={`est-detalle-estado ${c.cumplido ? "win" : "loss"}`}>{c.cumplido ? "✓" : "✗"}</span>
+          <div className="est-detalle-body">
+            <div className="est-detalle-texto">
+              {c.texto}
+              {c.hora && <span className="est-check-hora est-mono">{fmtHora(c.hora)}</span>}
+            </div>
+            {c.comentario && <div className="est-detalle-comentario">{c.comentario}</div>}
+          </div>
+          {c.capturaPath && (
+            <button className="est-thumb" onClick={() => onAmpliar(c.capturaPath, c.texto)} aria-label={`Ampliar captura de ${c.texto}`}>
+              <img src={urlCaptura(c.capturaPath)} alt="" loading="lazy" />
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

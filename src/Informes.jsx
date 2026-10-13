@@ -62,14 +62,15 @@ export default function Informes() {
     setError(false);
     const [{ data: ops, error: err1 }, { data: regs, error: err2 }] = await Promise.all([
       conReintento(() => supabase.from(TRADES_TABLE).select("*")),
-      conReintento(() => supabase.from(ESTRATEGIA_REGISTROS_TABLE).select("fecha, cumplida")),
+      conReintento(() => supabase.from(ESTRATEGIA_REGISTROS_TABLE).select("fecha, cumplida, en_curso")),
     ]);
     if (err1 || err2) {
       console.error(err1 || err2);
       setError(true);
     } else {
       setTrades(ops || []);
-      setReglas(regs || []);
+      // Las sesiones de Estrategia en curso no cuentan hasta terminarlas.
+      setReglas((regs || []).filter((r) => !r.en_curso));
     }
     setLoaded(true);
   }, []);

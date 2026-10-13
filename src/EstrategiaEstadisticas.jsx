@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Pencil, Trash2, X, ChevronDown } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
-import { SESION_NOMBRES, fmtFechaLarga, todayIsoLocal, calcularStats, StatCards } from "./estrategiaComun";
+import { SESION_NOMBRES, fmtFechaLarga, todayIsoLocal, calcularStats, StatCards, DetalleChecks, VisorCaptura } from "./estrategiaComun";
+import { CHECKS_TABLE, checksDeRegistro, borrarCapturasRegistro, urlCaptura, fmtHora } from "./estrategiaChecks";
 
 const REGISTROS_TABLE = "estrategia_registros";
 
-function HistorialPanel({ titulo, registros, vacio, onEditar, onBorrar }) {
+// Al pulsar un registro se despliega el detalle de sus checks (estado, comentario, hora y captura).
+function HistorialPanel({ titulo, registros, vacio, onEditar, onBorrar, checksPorRegistro, abiertos, onToggle, onAmpliar }) {
   return (
     <div className="est-panel">
       <div className="est-panel-title">{titulo}</div>
@@ -16,16 +18,25 @@ function HistorialPanel({ titulo, registros, vacio, onEditar, onBorrar }) {
           const total = (r.checks || []).length;
           const hechos = (r.checks || []).filter((c) => c.cumplido).length;
           const meta = [r.instrumento, SESION_NOMBRES[r.sesion]].filter(Boolean).join(" · ");
+          const abierto = !!abiertos[r.id];
           return (
-            <div key={r.id} className="est-hist-row">
-              <div>
-                <div className="est-hist-fecha">{fmtFechaLarga(r.fecha)}</div>
-                {meta && <div className="est-hist-instrumento est-mono">{meta}</div>}
-              </div>
-              <div className="est-hist-right">
-                <div className={`est-badge ${r.cumplida ? "win" : "loss"}`}>
-                  {r.cumplida ? "✓ Cumplió todos los requisitos" : `⚠ Cumplió ${hechos}/${total}`}
+            <div key={r.id} className={`est-hist-item ${abierto ? "open" : ""}`}>
+            <div className="est-hist-row">
+              <button className="est-hist-toggle" onClick={() => onToggle(r.id)} aria-expanded={abierto}>
+                <ChevronDown size={15} className="est-hist-chevron" />
+                <div>
+                  <div className="est-hist-fecha">{fmtFechaLarga(r.fecha)}</div>
+                  {meta && <div className="est-hist-instrumento est-mono">{meta}</div>}
                 </div>
+              </button>
+              <div className="est-hist-right">
+                {r.en_curso ? (
+                  <div className="est-badge curso">● En curso · {hechos}/{total}</div>
+                ) : (
+                  <div className={`est-badge ${r.cumplida ? "win" : "loss"}`}>
+                    {r.cumplida ? "✓ Cumplió todos los requisitos" : `⚠ Cumplió ${hechos}/${total}`}
+                  </div>
+                )}
                 <div className="est-req-actions">
                   <button className="est-icon-btn" onClick={() => onEditar(r)} aria-label="Editar registro" title="Editar registro">
                     <Pencil size={13} />
@@ -35,6 +46,13 @@ function HistorialPanel({ titulo, registros, vacio, onEditar, onBorrar }) {
                   </button>
                 </div>
               </div>
+            </div>
+            {abierto && (
+              <div className="est-hist-detalle">
+                <DetalleChecks checks={checksDeRegistro(r, checksPorRegistro[r.id])} onAmpliar={onAmpliar} />
+                {r.notas && <div className="est-detalle-notas">{r.notas}</div>}
+              </div>
+            )}
             </div>
           );
         })
@@ -57,21 +75,28 @@ export default function EstrategiaEstadisticas() {
   const [eNotas, setENotas] = useState("");
   const [eChecks, setEChecks] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [checksFilas, setChecksFilas] = useState([]); // filas de estrategia_checks
+  const [abiertos, setAbiertos] = useState({});
+  const [visor, setVisor] = useState(null); // { path, titulo }
 
   const cargar = useCallback(async () => {
     setError(false);
-    const { data, error: err } = await conReintento(() =>
-      supabase
-        .from(REGISTROS_TABLE)
-        .select("*")
-        .order("fecha", { ascending: false })
-        .order("created_at", { ascending: false })
-    );
-    if (err) {
-      console.error(err);
+    const [{ data, error: err }, { data: filas, error: errChecks }] = await Promise.all([
+      conReintento(() =>
+        supabase
+          .from(REGISTROS_TABLE)
+          .select("*")
+          .order("fecha", { ascending: false })
+          .order("created_at", { ascending: false })
+      ),
+      conReintento(() => supabase.from(CHECKS_TABLE).select("*")),
+    ]);
+    if (err || errChecks) {
+      console.error(err || errChecks);
       setError(true);
     } else {
       setRegistros(data || []);
+      setChecksFilas(filas || []);
     }
     setLoaded(true);
   }, []);
@@ -90,8 +115,23 @@ export default function EstrategiaEstadisticas() {
 
   const deHoy = useMemo(() => registros.filter((r) => r.fecha === hoy), [registros, hoy]);
   const anteriores = useMemo(() => registros.filter((r) => r.fecha !== hoy), [registros, hoy]);
-  const statsHoy = useMemo(() => calcularStats(deHoy), [deHoy]);
-  const statsAnteriores = useMemo(() => calcularStats(anteriores), [anteriores]);
+  // Los registros en curso se listan pero no cuentan hasta terminar la sesión.
+  const statsHoy = useMemo(() => calcularStats(deHoy.filter((r) => !r.en_curso)), [deHoy]);
+  const statsAnteriores = useMemo(() => calcularStats(anteriores.filter((r) => !r.en_curso)), [anteriores]);
+  const checksPorRegistro = useMemo(() => {
+    const mapa = {};
+    checksFilas.forEach((f) => {
+      (mapa[f.registro_id] = mapa[f.registro_id] || []).push(f);
+    });
+    return mapa;
+  }, [checksFilas]);
+
+  function toggleAbierto(id) {
+    setAbiertos((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  const ampliar = useCallback((path, titulo) => setVisor({ path, titulo }), []);
+  const cerrarVisor = useCallback(() => setVisor(null), []);
 
   // ---------------- Editar / borrar registros ----------------
 
@@ -124,16 +164,31 @@ export default function EstrategiaEstadisticas() {
       })
       .eq("id", editando.id)
       .select("id");
-    setBusy(false);
     if (error || !data?.length) {
+      setBusy(false);
       console.error(error || "Update sin filas afectadas: revisa las políticas RLS de estrategia_registros");
       setError(true);
       return;
+    }
+    // Si el registro tiene checks en directo, su "cumplido" se mantiene igual que en la copia.
+    const filas = checksPorRegistro[editando.id] || [];
+    const cambios = filas
+      .map((f) => ({ f, c: eChecks.find((c) => c.id && c.id === f.criterio_id) }))
+      .filter(({ f, c }) => c && !!c.cumplido !== !!f.cumplido);
+    const resultados = await Promise.all(
+      cambios.map(({ f, c }) => supabase.from(CHECKS_TABLE).update({ cumplido: !!c.cumplido }).eq("id", f.id))
+    );
+    setBusy(false);
+    const fallo = resultados.find((r) => r.error);
+    if (fallo) {
+      console.error(fallo.error);
+      setError(true);
     }
     setEditando(null);
     cargar();
   }
 
+  // Borra el registro (sus checks caen por cascade) y después sus capturas del storage.
   async function borrarRegistro(r) {
     if (!window.confirm(`¿Borrar el registro del ${fmtFechaLarga(r.fecha)}? Esta acción no se puede deshacer.`)) return;
     setError(false);
@@ -143,6 +198,7 @@ export default function EstrategiaEstadisticas() {
       setError(true);
       return;
     }
+    await borrarCapturasRegistro(r.user_id, r.id);
     cargar();
   }
 
@@ -152,8 +208,8 @@ export default function EstrategiaEstadisticas() {
     <>
       {error && (
         <div className="est-error-banner">
-          No se pudo guardar/leer el último cambio. Revisa tu conexión, o que la tabla "estrategia_registros" y sus
-          permisos estén bien configurados en Supabase.
+          No se pudo guardar/leer el último cambio. Revisa tu conexión, o que las tablas "estrategia_registros" y
+          "estrategia_checks" y sus permisos estén bien configurados en Supabase.
         </div>
       )}
       {!loaded && <div className="est-loading">Cargando tus estadísticas…</div>}
@@ -169,6 +225,10 @@ export default function EstrategiaEstadisticas() {
         vacio="Aún no has guardado ninguna sesión hoy."
         onEditar={abrirEditar}
         onBorrar={borrarRegistro}
+        checksPorRegistro={checksPorRegistro}
+        abiertos={abiertos}
+        onToggle={toggleAbierto}
+        onAmpliar={ampliar}
       />
 
       <div className={`est-accordion ${anterioresAbierto ? "open" : ""}`}>
@@ -188,6 +248,10 @@ export default function EstrategiaEstadisticas() {
               vacio="Aún no has registrado ningún trade con tu checklist."
               onEditar={abrirEditar}
               onBorrar={borrarRegistro}
+              checksPorRegistro={checksPorRegistro}
+              abiertos={abiertos}
+              onToggle={toggleAbierto}
+              onAmpliar={ampliar}
             />
           </div>
         )}
@@ -232,14 +296,31 @@ export default function EstrategiaEstadisticas() {
                 />
               </div>
               {eChecks.length === 0 && <div className="est-empty">Este registro no tiene items guardados.</div>}
-              {eChecks.map((c, i) => (
-                <div key={`${c.id}-${i}`} className={`est-req-row ${c.cumplido ? "done" : ""}`}>
-                  <label className="est-check-label">
-                    <input type="checkbox" checked={c.cumplido} onChange={() => toggleCheck(i)} />
-                    <span>{c.texto}</span>
-                  </label>
-                </div>
-              ))}
+              {eChecks.map((c, i) => {
+                // Comentario, hora y captura del check en directo (si el registro los tiene).
+                const fila = c.id ? (checksPorRegistro[editando.id] || []).find((f) => f.criterio_id === c.id) : null;
+                return (
+                  <div key={`${c.id}-${i}`} className={`est-req-row est-edit-row ${c.cumplido ? "done" : ""}`}>
+                    <div className="est-edit-main">
+                      <label className="est-check-label">
+                        <input type="checkbox" checked={c.cumplido} onChange={() => toggleCheck(i)} />
+                        <span>{c.texto}</span>
+                        {fila?.created_at && <span className="est-check-hora">{fmtHora(fila.created_at)}</span>}
+                      </label>
+                      {fila?.comentario && <div className="est-detalle-comentario">{fila.comentario}</div>}
+                    </div>
+                    {fila?.captura_path && (
+                      <button
+                        className="est-thumb est-thumb-edit"
+                        onClick={() => ampliar(fila.captura_path, c.texto)}
+                        aria-label={`Ampliar captura de ${c.texto}`}
+                      >
+                        <img src={urlCaptura(fila.captura_path)} alt="" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="est-field">
@@ -262,6 +343,8 @@ export default function EstrategiaEstadisticas() {
           </div>
         </div>
       )}
+
+      <VisorCaptura path={visor?.path} titulo={visor?.titulo} onCerrar={cerrarVisor} />
     </>
   );
 }
