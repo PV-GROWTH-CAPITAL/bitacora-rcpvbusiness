@@ -713,7 +713,7 @@ export default function Contabilidad({ session, activeTab = "GENERAL", onActiveT
                     {resumenPorEmpresa.map((item) => {
                       const beneficio = item.retiros - item.costo;
                       return (
-                        <tr key={item.empresa} style={{ cursor: "pointer" }} onClick={() => setActiveTab(item.empresa)}>
+                        <tr key={item.empresa} style={{ cursor: "pointer" }} onClick={() => onActiveTabChange?.(item.empresa)}>
                           <td style={{ fontWeight: 600, color: "var(--accent)" }}>{item.empresa}</td>
                           <td className="jt-mono">{item.cuentas}</td>
                           <td className="jt-mono jt-pnl-loss">{fmtMoney(-item.costo)}</td>
