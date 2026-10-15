@@ -36,6 +36,28 @@ function fmtMoney(n) {
   return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
 }
 
+// Contratos/lotaje: admite coma o punto como separador decimal y hasta 2 decimales.
+function parseLotes(v) {
+  const s = String(v ?? "").trim().replace(",", ".");
+  if (!/^(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(s)) return null;
+  const n = Number(s);
+  return n > 0 ? n : null;
+}
+
+function errorLotes(v) {
+  const s = String(v ?? "").trim().replace(",", ".");
+  if (s === "") return "Indica los contratos/lotaje.";
+  if (!/^-?(\d+(\.\d*)?|\.\d+)$/.test(s)) return "Debe ser un número (ej. 4 o 4,5).";
+  if (/\.\d{3,}$/.test(s)) return "Máximo 2 decimales.";
+  if (!(Number(s) > 0)) return "Debe ser mayor que 0.";
+  return null;
+}
+
+function fmtLotes(n) {
+  if (n === null || n === undefined || n === "" || isNaN(Number(n))) return "—";
+  return Number(n).toLocaleString("es-ES", { maximumFractionDigits: 2 });
+}
+
 function fmtDate(d) {
   if (!d) return "\u2014";
   const dt = new Date(d + "T00:00:00");
@@ -133,6 +155,8 @@ export default function TradingJournal({ session }) {
   // Valores por cuenta que el usuario ha cambiado a mano; si no hay ajuste, se usa el valor general.
   const [ajustes, setAjustes] = useState({});
   const [formError, setFormError] = useState(false);
+  // Mensaje real de Supabase del último insert/update/delete fallido.
+  const [errorDetalle, setErrorDetalle] = useState("");
 
   const cargarCuentasActivas = useCallback(async () => {
     const { data, error } = await conReintento(() =>
@@ -173,6 +197,7 @@ export default function TradingJournal({ session }) {
 
   const cargarTrades = useCallback(async () => {
     setSaveError(false);
+    setErrorDetalle("");
     const { data, error } = await conReintento(() =>
       supabase.from(TABLE).select("*").order("fecha", { ascending: false })
     );
@@ -461,7 +486,11 @@ export default function TradingJournal({ session }) {
   }
 
   function openEditar(t) {
-    setForm({ ...emptyForm, ...t });
+    setForm({
+      ...emptyForm,
+      ...t,
+      contratos: t.contratos === null || t.contratos === undefined ? "1" : String(Number(t.contratos)).replace(".", ","),
+    });
     setEditingId(t.id);
     setCapturaFile(null);
     setCapturaPreview(t.captura_url || null);
@@ -471,6 +500,7 @@ export default function TradingJournal({ session }) {
 
   function cerrarForm() {
     setShowForm(false);
+    setFormError(false);
     setEditingId(null);
     setCapturaFile(null);
     setCapturaPreview(null);
@@ -536,12 +566,33 @@ export default function TradingJournal({ session }) {
     setAjustes(({ [c]: _, ...resto }) => resto);
   }
 
+  // Primer valor de contratos/lotaje no válido entre los que se van a guardar.
+  const errorContratos = (() => {
+    if (modoMultiCuenta && cuentasSel.length > 1) {
+      for (const c of cuentasSel) {
+        const motivo = errorLotes(valorCuenta(c, "contratos"));
+        if (motivo) return `Contratos/Lotaje en ${c}: ${motivo}`;
+      }
+      return null;
+    }
+    const motivo = errorLotes(form.contratos);
+    return motivo ? `Contratos/Lotaje: ${motivo}` : null;
+  })();
+
   const puedeGuardar =
     !!form.fecha &&
     !subiendoCaptura &&
+    !errorContratos &&
     (modoMultiCuenta
       ? cuentasSel.length > 0 && cuentasSel.every((c) => valorCuenta(c, "resultado") !== "")
       : form.resultado !== "");
+
+  function mostrarFallo(error, enFormulario) {
+    console.error(error);
+    setErrorDetalle(error?.message ? `${error.message}${error.code ? ` (${error.code})` : ""}` : "");
+    setSaveError(true);
+    if (enFormulario) setFormError(true);
+  }
 
   async function guardarForm() {
     if (!puedeGuardar) return;
@@ -559,9 +610,7 @@ export default function TradingJournal({ session }) {
       });
       setSubiendoCaptura(false);
       if (uploadError) {
-        console.error(uploadError);
-        setSaveError(true);
-        setFormError(true);
+        mostrarFallo(uploadError, true);
         return;
       }
       const { data: pub } = supabase.storage.from("capturas").getPublicUrl(path);
@@ -573,7 +622,7 @@ export default function TradingJournal({ session }) {
       cuenta: form.cuenta,
       instrumento: form.instrumento,
       direccion: form.direccion,
-      contratos: Number(form.contratos) || 1,
+      contratos: parseLotes(form.contratos),
       puntos: form.puntos === "" ? null : Number(form.puntos),
       resultado: Number(form.resultado),
       estrategia: form.estrategia,
@@ -586,12 +635,11 @@ export default function TradingJournal({ session }) {
 
     setSaveError(false);
     setFormError(false);
+    setErrorDetalle("");
     if (editingId) {
       const { error } = await supabase.from(TABLE).update(registro).eq("id", editingId);
       if (error) {
-        console.error(error);
-        setSaveError(true);
-        setFormError(true);
+        mostrarFallo(error, true);
         return;
       }
     } else {
@@ -600,15 +648,13 @@ export default function TradingJournal({ session }) {
             ...registro,
             cuenta: c,
             resultado: Number(valorCuenta(c, "resultado")),
-            contratos: Number(valorCuenta(c, "contratos")) || 1,
+            contratos: parseLotes(valorCuenta(c, "contratos")),
             user_id: session.user.id,
           }))
         : [{ ...registro, user_id: session.user.id }];
       const { error } = await supabase.from(TABLE).insert(filas);
       if (error) {
-        console.error(error);
-        setSaveError(true);
-        setFormError(true);
+        mostrarFallo(error, true);
         return;
       }
     }
@@ -621,11 +667,11 @@ export default function TradingJournal({ session }) {
 
   async function eliminar(id) {
     setSaveError(false);
+    setErrorDetalle("");
     const trade = trades.find((t) => t.id === id);
     const { error } = await supabase.from(TABLE).delete().eq("id", id);
     if (error) {
-      console.error(error);
-      setSaveError(true);
+      mostrarFallo(error, false);
       return;
     }
     if (trade && trade.captura_url) borrarCapturaStorage(trade.captura_url, id);
@@ -635,7 +681,8 @@ export default function TradingJournal({ session }) {
 
   function exportarCSV() {
     const cols = ["fecha", "cuenta", "instrumento", "direccion", "contratos", "puntos", "resultado", "estrategia", "notas", "enlace"];
-    const rows = [cols.join(",")].concat(
+    const cabeceras = cols.map((c) => (c === "contratos" ? "contratos/lotaje" : c));
+    const rows = [cabeceras.join(",")].concat(
       sorted.map((t) => cols.map((c) => `"${String(t[c] ?? "").replace(/"/g, '""')}"`).join(","))
     );
     const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
@@ -953,6 +1000,8 @@ export default function TradingJournal({ session }) {
         .jt-acc-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .jt-field .jt-acc-row input { padding: 6px 8px; min-width: 0; width: 100%; }
         .jt-field .jt-acc-row input.ajustada { border-color: var(--accent-dim); }
+        .jt-field input.invalido, .jt-field .jt-acc-row input.invalido { border-color: var(--loss); }
+        .jt-hint-error { color: #D97563; margin-bottom: 10px; }
         .jt-acc-reset:disabled { opacity: 0; pointer-events: none; }
         .jt-acc-total {
           display: flex; justify-content: space-between; align-items: center;
@@ -969,6 +1018,7 @@ export default function TradingJournal({ session }) {
           border-radius: 8px;
           margin-bottom: 14px;
         }
+        .jt-error-detalle { margin-top: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; opacity: 0.85; word-break: break-word; }
         .jt-captura-drop {
           display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
           border: 1.5px dashed var(--border); border-radius: 10px; padding: 22px 12px; cursor: pointer;
@@ -1164,6 +1214,7 @@ export default function TradingJournal({ session }) {
         {saveError && (
           <div className="jt-error-banner">
             No se pudo guardar/leer el último cambio. Revisa tu conexión, o que la tabla "trades" y sus permisos estén bien configurados en Supabase.
+            {errorDetalle && <div className="jt-error-detalle">Detalle: {errorDetalle}</div>}
           </div>
         )}
         {!loaded && (
@@ -1230,8 +1281,8 @@ export default function TradingJournal({ session }) {
               <div className="jt-stat-value jt-mono">{analisis.n}</div>
             </div>
             <div className="jt-analysis-card">
-              <div className="jt-stat-label">Total de contratos operados</div>
-              <div className="jt-stat-value jt-mono">{analisis.totalLots}</div>
+              <div className="jt-stat-label">Total de contratos/lotaje operados</div>
+              <div className="jt-stat-value jt-mono">{fmtLotes(analisis.totalLots)}</div>
             </div>
 
             <div className="jt-analysis-card">
@@ -1446,7 +1497,7 @@ export default function TradingJournal({ session }) {
                     <th onClick={() => toggleSort("cuenta")}>Cuenta</th>
                     <th onClick={() => toggleSort("instrumento")}>Instr.</th>
                     <th onClick={() => toggleSort("direccion")}>Dir.</th>
-                    <th onClick={() => toggleSort("contratos")}>Contr.</th>
+                    <th onClick={() => toggleSort("contratos")}>Contratos/Lotaje</th>
                     <th onClick={() => toggleSort("estrategia")}>Estrategia</th>
                     <th onClick={() => toggleSort("resultado")}>Resultado</th>
                     <th></th>
@@ -1463,7 +1514,7 @@ export default function TradingJournal({ session }) {
                         <td>{t.cuenta || "\u2014"}</td>
                         <td className="jt-mono">{t.instrumento}</td>
                         <td>{t.direccion}</td>
-                        <td className="jt-mono">{t.contratos}</td>
+                        <td className="jt-mono">{fmtLotes(t.contratos)}</td>
                         <td>{t.estrategia || "\u2014"}</td>
                         <td className={`jt-mono ${Number(t.resultado) >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
                           {fmtMoney(t.resultado)}
@@ -1551,8 +1602,16 @@ export default function TradingJournal({ session }) {
                 </select>
               </div>
               <div className="jt-field">
-                <label>Contratos</label>
-                <input type="number" min="1" value={form.contratos} onChange={(e) => setForm({ ...form, contratos: e.target.value })} />
+                <label>Contratos/Lotaje</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className={errorLotes(form.contratos) ? "invalido" : undefined}
+                  aria-invalid={!!errorLotes(form.contratos)}
+                  value={form.contratos}
+                  onChange={(e) => setForm({ ...form, contratos: e.target.value })}
+                  placeholder="Ej. 1 o 0,5"
+                />
               </div>
               <div className="jt-field">
                 <label>Resultado neto ($)</label>
@@ -1606,7 +1665,7 @@ export default function TradingJournal({ session }) {
                   <div className="jt-acc-list">
                     <div className="jt-acc-row jt-acc-row-head">
                       <span>Cuenta</span>
-                      <span>Contratos</span>
+                      <span>Contratos/<wbr />Lotaje</span>
                       <span>Resultado ($)</span>
                       <span />
                     </div>
@@ -1616,12 +1675,13 @@ export default function TradingJournal({ session }) {
                         <div key={c} className="jt-acc-row">
                           <span className="jt-acc-name" title={c}>{c}</span>
                           <input
-                            type="number"
-                            min="1"
-                            className={`jt-mono${ajustes[c]?.contratos !== undefined ? " ajustada" : ""}`}
+                            type="text"
+                            inputMode="decimal"
+                            className={`jt-mono${ajustes[c]?.contratos !== undefined ? " ajustada" : ""}${errorLotes(valorCuenta(c, "contratos")) ? " invalido" : ""}`}
                             value={valorCuenta(c, "contratos")}
                             onChange={(e) => ajustarCuenta(c, "contratos", e.target.value)}
-                            aria-label={`Contratos en ${c}`}
+                            aria-label={`Contratos/Lotaje en ${c}`}
+                            aria-invalid={!!errorLotes(valorCuenta(c, "contratos"))}
                           />
                           <input
                             type="number"
@@ -1685,8 +1745,13 @@ export default function TradingJournal({ session }) {
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Contexto, gestión de riesgo, lecciones..." />
             </div>
 
+            {errorContratos && <div className="jt-acc-hint jt-hint-error" role="alert">{errorContratos}</div>}
+
             {formError && (
-              <div className="jt-error-banner">No se pudo guardar la operación. Revisa tu conexión e inténtalo de nuevo.</div>
+              <div className="jt-error-banner">
+                No se pudo guardar la operación. Revisa tu conexión e inténtalo de nuevo.
+                {errorDetalle && <div className="jt-error-detalle">Detalle: {errorDetalle}</div>}
+              </div>
             )}
 
             <div className="jt-modal-actions">
