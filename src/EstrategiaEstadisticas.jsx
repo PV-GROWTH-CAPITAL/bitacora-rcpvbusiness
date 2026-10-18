@@ -5,6 +5,14 @@ import { SESION_NOMBRES, fmtFechaLarga, todayIsoLocal, calcularStats, StatCards,
 import { CHECKS_TABLE, checksDeRegistro, borrarCapturasRegistro, urlCaptura, fmtHora } from "./estrategiaChecks";
 
 const REGISTROS_TABLE = "estrategia_registros";
+const MESES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+// Estado abierto/cerrado de cada mes ("YYYY-MM"). Vive en el módulo para sobrevivir al cambio
+// de pestaña (London/NY desmontan esta vista); se pierde al recargar.
+const mesesAbiertosMemo = {};
 
 // Al pulsar un registro se despliega el detalle de sus checks (estado, comentario, hora y captura).
 function HistorialPanel({ titulo, registros, vacio, onEditar, onBorrar, checksPorRegistro, abiertos, onToggle, onAmpliar }) {
@@ -66,7 +74,7 @@ export default function EstrategiaEstadisticas() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   const [hoy, setHoy] = useState(todayIsoLocal);
-  const [anterioresAbierto, setAnterioresAbierto] = useState(false);
+  const [mesesAbiertos, setMesesAbiertos] = useState(() => ({ ...mesesAbiertosMemo }));
 
   // Modal "Editar registro"
   const [editando, setEditando] = useState(null);
@@ -117,7 +125,26 @@ export default function EstrategiaEstadisticas() {
   const anteriores = useMemo(() => registros.filter((r) => r.fecha !== hoy), [registros, hoy]);
   // Los registros en curso se listan pero no cuentan hasta terminar la sesión.
   const statsHoy = useMemo(() => calcularStats(deHoy.filter((r) => !r.en_curso)), [deHoy]);
-  const statsAnteriores = useMemo(() => calcularStats(anteriores.filter((r) => !r.en_curso)), [anteriores]);
+  // Un grupo por mes según la columna "fecha" (YYYY-MM-DD), sin pasar por Date para evitar el desfase UTC.
+  const meses = useMemo(() => {
+    const grupos = {};
+    anteriores.forEach((r) => {
+      const clave = (r.fecha || "").slice(0, 7);
+      (grupos[clave] = grupos[clave] || []).push(r);
+    });
+    return Object.keys(grupos)
+      .sort((a, b) => (a < b ? 1 : -1))
+      .map((clave) => {
+        const [anio, mes] = clave.split("-");
+        return {
+          clave,
+          etiqueta: MESES[Number(mes) - 1] ? `${MESES[Number(mes) - 1]} ${anio}` : "Sin fecha",
+          registros: grupos[clave],
+          stats: calcularStats(grupos[clave].filter((r) => !r.en_curso)),
+        };
+      });
+  }, [anteriores]);
+  const mesActual = hoy.slice(0, 7);
   const checksPorRegistro = useMemo(() => {
     const mapa = {};
     checksFilas.forEach((f) => {
@@ -125,6 +152,16 @@ export default function EstrategiaEstadisticas() {
     });
     return mapa;
   }, [checksFilas]);
+
+  function mesAbierto(clave) {
+    return mesesAbiertos[clave] ?? clave === mesActual;
+  }
+
+  function toggleMes(clave) {
+    const valor = !mesAbierto(clave);
+    mesesAbiertosMemo[clave] = valor;
+    setMesesAbiertos((prev) => ({ ...prev, [clave]: valor }));
+  }
 
   function toggleAbierto(id) {
     setAbiertos((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -231,31 +268,50 @@ export default function EstrategiaEstadisticas() {
         onAmpliar={ampliar}
       />
 
-      <div className={`est-accordion ${anterioresAbierto ? "open" : ""}`}>
-        <button className="est-accordion-head" onClick={() => setAnterioresAbierto((v) => !v)} aria-expanded={anterioresAbierto}>
-          <span className="est-display">Estadísticas anteriores a octubre 2026</span>
-          <span className="est-accordion-meta est-mono">
-            {anteriores.length} registros
-            <ChevronDown size={16} className="est-accordion-chevron" />
-          </span>
-        </button>
-        {anterioresAbierto && (
-          <div className="est-accordion-body">
-            <StatCards stats={statsAnteriores} />
-            <HistorialPanel
-              titulo="Historial de registros"
-              registros={anteriores}
-              vacio="Aún no has registrado ningún trade con tu checklist."
-              onEditar={abrirEditar}
-              onBorrar={borrarRegistro}
-              checksPorRegistro={checksPorRegistro}
-              abiertos={abiertos}
-              onToggle={toggleAbierto}
-              onAmpliar={ampliar}
-            />
+      {loaded && meses.length === 0 && (
+        <HistorialPanel
+          titulo="Historial de registros"
+          registros={[]}
+          vacio="Aún no has registrado ningún trade con tu checklist."
+          onEditar={abrirEditar}
+          onBorrar={borrarRegistro}
+          checksPorRegistro={checksPorRegistro}
+          abiertos={abiertos}
+          onToggle={toggleAbierto}
+          onAmpliar={ampliar}
+        />
+      )}
+
+      {meses.map((m) => {
+        const abierto = mesAbierto(m.clave);
+        return (
+          <div key={m.clave} className={`est-accordion ${abierto ? "open" : ""}`}>
+            <button className="est-accordion-head" onClick={() => toggleMes(m.clave)} aria-expanded={abierto}>
+              <span className="est-display">{m.etiqueta}</span>
+              <span className="est-accordion-meta est-mono">
+                {m.registros.length} registros · {m.stats.pct === null ? "—" : `${m.stats.pct}%`} cumplidas
+                <ChevronDown size={16} className="est-accordion-chevron" />
+              </span>
+            </button>
+            {abierto && (
+              <div className="est-accordion-body">
+                <StatCards stats={m.stats} />
+                <HistorialPanel
+                  titulo="Historial de registros"
+                  registros={m.registros}
+                  vacio="Aún no has registrado ningún trade con tu checklist."
+                  onEditar={abrirEditar}
+                  onBorrar={borrarRegistro}
+                  checksPorRegistro={checksPorRegistro}
+                  abiertos={abiertos}
+                  onToggle={toggleAbierto}
+                  onAmpliar={ampliar}
+                />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })}
 
       {editando && (
         <div className="est-modal-backdrop" onClick={() => setEditando(null)}>
