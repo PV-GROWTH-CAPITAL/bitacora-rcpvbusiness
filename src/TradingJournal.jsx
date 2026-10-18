@@ -18,6 +18,7 @@ import {
   Pencil,
   Download,
   ImagePlus,
+  ImageDown,
   ChevronDown,
   ChevronRight,
   ChevronLeft,
@@ -26,6 +27,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
+import OperativaImagen from "./OperativaImagen";
 
 const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const TABLE = "trades";
@@ -147,6 +149,7 @@ export default function TradingJournal({ session }) {
   const [expandedId, setExpandedId] = useState(null);
   const [calDate, setCalDate] = useState(() => new Date());
   const [selectedDays, setSelectedDays] = useState([]);
+  const [showOperativa, setShowOperativa] = useState(false);
   const [riesgoMaximo, setRiesgoMaximo] = useState(null);
   const [riesgoInput, setRiesgoInput] = useState("");
   const [riesgoLoaded, setRiesgoLoaded] = useState(false);
@@ -1482,7 +1485,15 @@ export default function TradingJournal({ session }) {
                   Quitar todos
                 </button>
               )}
+              {selectedDays.length === 1 && sorted.length > 0 && (
+                <button className="jt-btn" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setShowOperativa(true)}>
+                  <ImageDown size={13} /> Imagen operativa
+                </button>
+              )}
             </span>
+          )}
+          {showOperativa && selectedDays.length === 1 && (
+            <OperativaImagen fecha={selectedDays[0]} trades={sorted} onClose={() => setShowOperativa(false)} />
           )}
           {sorted.length === 0 ? (
             <div className="jt-empty">
