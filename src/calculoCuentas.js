@@ -3,8 +3,11 @@
 // céntimos enteros para que los decimales no acumulen errores.
 
 export const TAMANO_POR_DEFECTO = 50000; // $ si la cuenta no tiene tamaño guardado
-export const DD_DISTANCIA = 2000; // $ de trailing EOD, igual en funded y evaluaciones (la columna dd_maximo se ignora)
-export const DD_FACTOR_BLOQUEO = 1.002; // en FUNDED el suelo se fija en tamano × 1.002
+export const DD_DISTANCIA = 2000; // $ de DD si la cuenta no tiene dd_maximo
+export const DD_FACTOR_BLOQUEO = 1.002; // en FUNDED sin dd_bloqueo, el suelo se fija en tamano × 1.002
+export const DD_TIPOS = ["eod_trailing", "estatico"]; // el primero es el valor por defecto
+export const RIESGO_PCT_POR_DEFECTO = 33; // % del margen que se arriesga por trade
+export const RIESGO_MINIMO_POR_DEFECTO = 250; // $ mínimos de riesgo por trade
 export const TARGET_EVALUACION = 3000; // $ sobre el tamaño para pasar una evaluación (la columna target se ignora)
 export const DIAS_RENTABLES_MIN_PNL = 150; // $ mínimos de P&L para que un día cuente como rentable
 export const DIAS_RENTABLES_OBJETIVO = 5; // días rentables necesarios (se reinicia con cada retiro)
@@ -40,17 +43,23 @@ function sumarPorFecha(items, campo) {
   return mapa;
 }
 
-// DD con trailing EOD de DD_DISTANCIA. Los retiros llegan como { fecha, monto } con monto ya en $
-// (ver montoRetiroUsd).
-// - Balance EOD de cada día = tamano + P&L acumulado − retiros acumulados.
+// DD de la cuenta. Los retiros llegan como { fecha, monto } con monto ya en $ (ver montoRetiroUsd).
+// - Partida = balanceInicial; si la cuenta no lo tiene, tamano.
+// - Balance actual = partida + P&L total − retiros.
+// - Distancia = ddMaximo (DD_DISTANCIA si está vacío).
+// - Bloqueo = ddBloqueo; si está vacío, tamano × 1.002 en FUNDED y sin bloqueo en EVALUACIÓN.
+// - eod_trailing (por defecto): balance EOD de cada día = partida + P&L acumulado − retiros acumulados.
 //   Solo cuentan los días ya cerrados (fecha < hoy); hoy entra en el balance actual, no en el DD.
-// - maxEOD = mayor balance EOD alcanzado (empieza en tamano y nunca baja).
-// - FUNDED: suelo = min(maxEOD − distancia, tamano × 1.002) → una vez llega ahí queda fijado.
-// - EVALUACIÓN: suelo = maxEOD − distancia, sin bloqueo.
-export function calcularDD({ tamano, tipo, trades = [], retiros = [], hoy }) {
+//   maxEOD = mayor balance EOD alcanzado (empieza en la partida y nunca baja).
+//   Suelo = maxEOD − distancia, sin pasar del bloqueo → una vez llega ahí queda fijado.
+// - estatico: suelo = partida − distancia, no se mueve nunca.
+export function calcularDD({ tamano, balanceInicial = null, tipo, ddTipo, ddMaximo = null, ddBloqueo = null, trades = [], retiros = [], hoy }) {
   const tamanoC = tamanoEnCentimos(tamano);
-  const distanciaC = aCentimos(DD_DISTANCIA);
-  const nivelBloqueoC = Math.round(tamanoC * DD_FACTOR_BLOQUEO);
+  const partidaC = balanceInicial == null || balanceInicial === "" ? tamanoC : aCentimos(balanceInicial);
+  const distanciaC = aCentimos(Number(ddMaximo) > 0 ? ddMaximo : DD_DISTANCIA);
+  const esFunded = tipo !== "evaluacion";
+  const tipoDD = DD_TIPOS.includes(ddTipo) ? ddTipo : DD_TIPOS[0];
+  const nivelBloqueoC = Number(ddBloqueo) > 0 ? aCentimos(ddBloqueo) : esFunded ? Math.round(tamanoC * DD_FACTOR_BLOQUEO) : null;
 
   const pnlPorDia = sumarPorFecha(trades, "resultado");
   const retirosPorDia = sumarPorFecha(retiros, "monto");
@@ -58,8 +67,8 @@ export function calcularDD({ tamano, tipo, trades = [], retiros = [], hoy }) {
     .filter((f) => f < hoy)
     .sort();
 
-  let balanceEodC = tamanoC;
-  let maxEodC = tamanoC;
+  let balanceEodC = partidaC;
+  let maxEodC = partidaC;
   diasCerrados.forEach((f) => {
     balanceEodC += (pnlPorDia.get(f) || 0) - (retirosPorDia.get(f) || 0);
     if (balanceEodC > maxEodC) maxEodC = balanceEodC;
@@ -67,18 +76,25 @@ export function calcularDD({ tamano, tipo, trades = [], retiros = [], hoy }) {
 
   const pnlTotalC = aCentimos(sumarImportes(trades, "resultado"));
   const totalRetiradoC = aCentimos(sumarImportes(retiros, "monto"));
-  const balanceActualC = tamanoC + pnlTotalC - totalRetiradoC;
+  const balanceActualC = partidaC + pnlTotalC - totalRetiradoC;
 
-  const trailingC = maxEodC - distanciaC;
-  const esFunded = tipo !== "evaluacion";
-  const fijado = esFunded && trailingC >= nivelBloqueoC;
-  const sueloC = esFunded ? Math.min(trailingC, nivelBloqueoC) : trailingC;
+  let sueloC;
+  let fijado = false;
+  if (tipoDD === "estatico") {
+    sueloC = partidaC - distanciaC;
+  } else {
+    const trailingC = maxEodC - distanciaC;
+    fijado = nivelBloqueoC != null && trailingC >= nivelBloqueoC;
+    sueloC = fijado ? nivelBloqueoC : trailingC;
+  }
   const margenC = balanceActualC - sueloC;
 
   return {
     tamano: aDolares(tamanoC),
+    partida: aDolares(partidaC),
+    ddTipo: tipoDD,
     distancia: aDolares(distanciaC),
-    nivelBloqueo: aDolares(nivelBloqueoC),
+    nivelBloqueo: nivelBloqueoC == null ? null : aDolares(nivelBloqueoC),
     maxEOD: aDolares(maxEodC),
     suelo: aDolares(sueloC),
     fijado,
@@ -86,7 +102,55 @@ export function calcularDD({ tamano, tipo, trades = [], retiros = [], hoy }) {
     pnlTotal: aDolares(pnlTotalC),
     totalRetirado: aDolares(totalRetiradoC),
     margen: aDolares(margenC),
+    margenCalculado: aDolares(margenC),
     margenRatio: margenC / distanciaC,
+    margenDelPanel: false,
+  };
+}
+
+// Margen real copiado del panel del broker. Solo vale el día en que se apuntó (fecha === hoy);
+// si no, se devuelve el DD calculado sin tocar. El balance y el suelo no cambian, solo el margen.
+export function aplicarMargenManual(dd, { margenManual, fecha, hoy }) {
+  if (margenManual == null || margenManual === "" || !fecha || fecha !== hoy) return dd;
+  const margenC = aCentimos(margenManual);
+  return { ...dd, margen: aDolares(margenC), margenRatio: margenC / aCentimos(dd.distancia), margenDelPanel: true };
+}
+
+// Riesgo máximo por trade: max(margen × pct, mínimo), sin pasar del margen ni de lo que queda de DD diario hoy.
+// - aviso "rojo": margen ≤ mínimo → un stop quema la cuenta.
+// - aviso "ambar": el mínimo supera al % (margen < mínimo / pct) → pctDelMargen dice cuánto del margen arriesgas.
+// - limitadoPor: "margen" | "dd_diario" | null, si alguno de los topes ha recortado el riesgo.
+// Con margen ≤ 0 no hay riesgo posible (la tarjeta ya avisa de que el DD está alcanzado).
+export function calcularRiesgo({ margen, pct = RIESGO_PCT_POR_DEFECTO, minimo = RIESGO_MINIMO_POR_DEFECTO, ddDiarioRestante = null }) {
+  const margenC = aCentimos(margen);
+  const pctNum = Number(pct) > 0 ? Math.min(100, Number(pct)) : RIESGO_PCT_POR_DEFECTO;
+  const minimoC = minimo != null && minimo !== "" && Number(minimo) >= 0 ? aCentimos(minimo) : aCentimos(RIESGO_MINIMO_POR_DEFECTO);
+  if (margenC <= 0) return { riesgo: 0, pct: pctNum, minimo: aDolares(minimoC), aviso: null, pctDelMargen: null, limitadoPor: null, sinMargen: true };
+
+  const porPctC = Math.floor((margenC * pctNum) / 100);
+  let riesgoC = Math.max(porPctC, minimoC);
+  let limitadoPor = null;
+  if (riesgoC > margenC) {
+    riesgoC = margenC;
+    limitadoPor = "margen";
+  }
+  if (ddDiarioRestante != null) {
+    const diarioC = Math.max(0, aCentimos(ddDiarioRestante));
+    if (riesgoC > diarioC) {
+      riesgoC = diarioC;
+      limitadoPor = "dd_diario";
+    }
+  }
+
+  const aviso = margenC <= minimoC ? "rojo" : minimoC > porPctC ? "ambar" : null;
+  return {
+    riesgo: aDolares(riesgoC),
+    pct: pctNum,
+    minimo: aDolares(minimoC),
+    aviso,
+    pctDelMargen: (riesgoC / margenC) * 100,
+    limitadoPor,
+    sinMargen: false,
   };
 }
 

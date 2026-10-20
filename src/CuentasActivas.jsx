@@ -7,6 +7,8 @@ import {
   calcularDiasRentables,
   calcularColchon,
   calcularConsistencia,
+  aplicarMargenManual,
+  calcularRiesgo,
   montoRetiroUsd,
   tieneMontoUsd,
   TAMANO_POR_DEFECTO,
@@ -17,15 +19,21 @@ import {
   DIAS_RENTABLES_OBJETIVO,
   COLCHON_POR_DEFECTO,
   CONSISTENCIA_PCT_POR_DEFECTO,
+  RIESGO_PCT_POR_DEFECTO,
+  RIESGO_MINIMO_POR_DEFECTO,
 } from "./calculoCuentas";
 
 const CUENTAS_TABLE = "cuentas";
 const TRADES_TABLE = "trades";
 // Misma tabla que usa Contabilidad: un retiro apuntado en cualquiera de las dos páginas aparece en ambas.
 const RETIROS_TABLE = "retiros";
+// Una fila por usuario; el Journal guarda aquí riesgo_maximo_diario y esta página el riesgo por trade.
+const CONFIG_TABLE = "configuracion";
 
 const TIPO_LABEL = { funded: "FUNDED", evaluacion: "EVALUACIÓN" };
 const MODO_PAYOUT_LABEL = { dias_minimos: "Días mínimos", colchon: "Colchón" };
+const DD_TIPO_LABEL = { eod_trailing: "Trailing EOD", estatico: "Estático" };
+const RIESGO_CONFIG_POR_DEFECTO = { pctFunded: RIESGO_PCT_POR_DEFECTO, pctEval: RIESGO_PCT_POR_DEFECTO, minimo: RIESGO_MINIMO_POR_DEFECTO };
 const MOTIVOS_CIERRE = [
   { value: "quemada", label: "Quemada" },
   { value: "pasada_a_funded", label: "Pasada a funded" },
@@ -46,6 +54,12 @@ function fmtMoney(n) {
 function fmtUsd(n) {
   const v = Number(n) || 0;
   return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("es-ES", NUM_FMT)} $`;
+}
+
+// Cifras grandes de la tarjeta: redondeadas a dólares enteros (50.900 $).
+function fmtUsdEntero(n) {
+  const v = Math.round(Number(n) || 0);
+  return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("es-ES", { maximumFractionDigits: 0, useGrouping: "always" })} $`;
 }
 
 // Importes de Contabilidad (lo recibido en € de un retiro).
@@ -108,8 +122,9 @@ function ddColor(pct) {
   return "var(--win)";
 }
 
-// Formulario mínimo: el DD trailing (2000 $) y el target de evaluación (+3000 $) son fijos y se calculan solos.
+// Formulario mínimo: el target de evaluación (+3000 $) es fijo y se calcula solo.
 // En FUNDED el tamaño no se pide (50000 por defecto, o el que ya tenga guardado la cuenta).
+// DD: tipo (trailing EOD o estático), distancia y bloqueo; vacíos = 2000 $ y tamaño × 1.002 en funded / sin bloqueo en evaluación.
 // Requisito de payout (solo FUNDED) y consistencia (ambos tipos) se configuran por cuenta;
 // las columnas vacías equivalen a los valores por defecto, que es como funcionaba antes.
 const emptyForm = {
@@ -117,6 +132,9 @@ const emptyForm = {
   tipo: "funded",
   tamano: String(TAMANO_POR_DEFECTO),
   dd_diario: "",
+  dd_tipo: "eod_trailing",
+  dd_maximo: "",
+  dd_bloqueo: "",
   modo_payout: "dias_minimos",
   dias_minimos: String(DIAS_RENTABLES_OBJETIVO),
   beneficio_minimo_dia: String(DIAS_RENTABLES_MIN_PNL),
@@ -152,6 +170,10 @@ export default function CuentasActivas({ session }) {
   const [detallesAbiertos, setDetallesAbiertos] = useState({});
   const [retiro, setRetiro] = useState(null); // modal de retiro: { id (si se edita), cuenta, montoUsd, montoEur, fecha, proveedor }
   const [cierre, setCierre] = useState(null); // modal de cerrar cuenta: { id, nombre, tipo, motivo, fecha }
+  const [riesgoConfig, setRiesgoConfig] = useState(RIESGO_CONFIG_POR_DEFECTO); // % del margen por trade y mínimo en $
+  const [configForm, setConfigForm] = useState(null); // edición de riesgoConfig: { pctFunded, pctEval, minimo } como texto
+  const [configError, setConfigError] = useState(false);
+  const [margenPanel, setMargenPanel] = useState({}); // input "margen del panel" por cuenta: { [id]: texto }
 
   const cargar = useCallback(async () => {
     setSaveError(false);
@@ -175,6 +197,29 @@ export default function CuentasActivas({ session }) {
     cargar();
   }, [cargar]);
 
+  // Va aparte de cargar(): si falla (p. ej. sin sql/cuentas_riesgo_migration.sql) se usan los valores por defecto
+  // y el resto de la página funciona igual.
+  const cargarConfig = useCallback(async () => {
+    const { data, error } = await conReintento(() =>
+      supabase.from(CONFIG_TABLE).select("riesgo_pct_funded, riesgo_pct_eval, riesgo_minimo").maybeSingle()
+    );
+    if (error) {
+      console.error(error);
+      return;
+    }
+    if (data) {
+      setRiesgoConfig({
+        pctFunded: Number(data.riesgo_pct_funded) > 0 ? Number(data.riesgo_pct_funded) : RIESGO_PCT_POR_DEFECTO,
+        pctEval: Number(data.riesgo_pct_eval) > 0 ? Number(data.riesgo_pct_eval) : RIESGO_PCT_POR_DEFECTO,
+        minimo: data.riesgo_minimo != null && Number(data.riesgo_minimo) >= 0 ? Number(data.riesgo_minimo) : RIESGO_MINIMO_POR_DEFECTO,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarConfig();
+  }, [cargarConfig]);
+
   const todayIso = todayIsoLocal();
 
   // Trades y retiros se enlazan con la cuenta por nombre (campo "cuenta"), igual que en el Journal y en Contabilidad.
@@ -186,9 +231,22 @@ export default function CuentasActivas({ session }) {
       // El balance resta lo que salió de la cuenta en $ (monto_usd), no lo recibido en € (monto).
       const retirosUsd = retirosCuenta.map((r) => ({ fecha: r.fecha, monto: montoRetiroUsd(r) }));
 
-      // Las columnas dd_maximo y target se ignoran: distancia 2000 y target +3000 fijos.
+      // La columna target se ignora: target +3000 fijo. Si hay margen del panel apuntado hoy, manda sobre el calculado.
       const config = configCuenta(c);
-      const dd = calcularDD({ tamano: c.tamano, tipo, trades: tradesCuenta, retiros: retirosUsd, hoy: todayIso });
+      const dd = aplicarMargenManual(
+        calcularDD({
+          tamano: c.tamano,
+          balanceInicial: c.balance_inicial,
+          tipo,
+          ddTipo: c.dd_tipo,
+          ddMaximo: c.dd_maximo,
+          ddBloqueo: c.dd_bloqueo,
+          trades: tradesCuenta,
+          retiros: retirosUsd,
+          hoy: todayIso,
+        }),
+        { margenManual: c.margen_manual, fecha: c.margen_manual_fecha, hoy: todayIso }
+      );
       const rentables = calcularDiasRentables({ trades: tradesCuenta, retiros: retirosUsd, hoy: todayIso, minPnl: config.minPnlDia });
       const target = tipo === "evaluacion" ? calcularTarget({ tamano: dd.tamano, balanceActual: dd.balanceActual }) : null;
       const colchon =
@@ -210,6 +268,13 @@ export default function CuentasActivas({ session }) {
       const ddDiario = Number(c.dd_diario) > 0 ? Number(c.dd_diario) : null;
       const perdidaHoy = Math.max(0, -rentables.pnlHoy);
       const ddDiarioUsadoPct = ddDiario ? Math.min(100, (perdidaHoy / ddDiario) * 100) : null;
+      const ddDiarioRestante = ddDiario ? Math.max(0, ddDiario + Math.min(0, rentables.pnlHoy)) : null;
+      const riesgo = calcularRiesgo({
+        margen: dd.margen,
+        pct: tipo === "funded" ? riesgoConfig.pctFunded : riesgoConfig.pctEval,
+        minimo: riesgoConfig.minimo,
+        ddDiarioRestante,
+      });
 
       return {
         ...c,
@@ -227,9 +292,11 @@ export default function CuentasActivas({ session }) {
         target,
         ddDiario,
         ddDiarioUsadoPct,
+        ddDiarioRestante,
+        riesgo,
       };
     });
-  }, [cuentas, trades, retiros, todayIso]);
+  }, [cuentas, trades, retiros, todayIso, riesgoConfig]);
 
   const activas = useMemo(() => datosPorCuenta.filter((c) => c.activa !== false), [datosPorCuenta]);
   const funded = useMemo(() => activas.filter((c) => c.tipo === "funded"), [activas]);
@@ -269,6 +336,9 @@ export default function CuentasActivas({ session }) {
       tipo: c.tipo,
       tamano: String(c.dd.tamano),
       dd_diario: c.dd_diario ?? "",
+      dd_tipo: c.dd.ddTipo,
+      dd_maximo: c.dd_maximo ?? "",
+      dd_bloqueo: c.dd_bloqueo ?? "",
       modo_payout: c.config.modoPayout,
       dias_minimos: String(c.config.diasObjetivo),
       beneficio_minimo_dia: String(c.config.minPnlDia),
@@ -283,6 +353,8 @@ export default function CuentasActivas({ session }) {
   const formErrores = useMemo(() => {
     const e = {};
     const esFunded = form.tipo === "funded";
+    if (form.dd_maximo !== "" && !(Number(form.dd_maximo) > 0)) e.dd_maximo = "Mayor que 0, o vacío para 2000 $.";
+    if (form.dd_tipo !== "estatico" && form.dd_bloqueo !== "" && !(Number(form.dd_bloqueo) > 0)) e.dd_bloqueo = "Mayor que 0, o vacío.";
     if (esFunded && form.modo_payout === "dias_minimos") {
       const dias = Number(form.dias_minimos);
       if (!Number.isInteger(dias) || dias < 1) e.dias_minimos = "Al menos 1 día (número entero).";
@@ -300,13 +372,16 @@ export default function CuentasActivas({ session }) {
   async function guardar() {
     if (!formValido) return;
     setBusy(true);
-    // No se tocan dd_maximo ni target: ya no se usan.
-    // Los campos de payout se guardan aunque el modo activo no los use, para no perderlos al cambiar de modo.
+    // No se toca target: ya no se usa. dd_maximo / dd_bloqueo vacíos se guardan como null (valores por defecto).
+    // Los campos de payout y el bloqueo se guardan aunque el modo activo no los use, para no perderlos al cambiar de modo.
     const registro = {
       nombre: form.nombre.trim(),
       tipo: form.tipo,
       tamano: Number(form.tamano) > 0 ? Number(form.tamano) : TAMANO_POR_DEFECTO,
       dd_diario: numOrNull(form.dd_diario),
+      dd_tipo: form.dd_tipo === "estatico" ? "estatico" : "eod_trailing",
+      dd_maximo: Number(form.dd_maximo) > 0 ? Number(form.dd_maximo) : null,
+      dd_bloqueo: Number(form.dd_bloqueo) > 0 ? Number(form.dd_bloqueo) : null,
       modo_payout: form.modo_payout === "colchon" ? "colchon" : "dias_minimos",
       dias_minimos: Number(form.dias_minimos) >= 1 ? Math.round(Number(form.dias_minimos)) : DIAS_RENTABLES_OBJETIVO,
       beneficio_minimo_dia: Number(form.beneficio_minimo_dia) >= 0 && form.beneficio_minimo_dia !== "" ? Number(form.beneficio_minimo_dia) : DIAS_RENTABLES_MIN_PNL,
@@ -321,6 +396,53 @@ export default function CuentasActivas({ session }) {
     );
     setBusy(false);
     if (ok) setShowForm(false);
+  }
+
+  // Margen real copiado del panel del broker: vale solo para hoy (margen_manual_fecha).
+  async function guardarMargenPanel(c) {
+    const texto = margenPanel[c.id];
+    if (texto == null || texto === "" || isNaN(Number(texto))) return;
+    setBusy(true);
+    const ok = await ejecutar(() =>
+      supabase.from(CUENTAS_TABLE).update({ margen_manual: Number(texto), margen_manual_fecha: todayIsoLocal() }).eq("id", c.id)
+    );
+    setBusy(false);
+    if (ok) setMargenPanel((prev) => ({ ...prev, [c.id]: "" }));
+  }
+
+  function quitarMargenPanel(c) {
+    ejecutar(() => supabase.from(CUENTAS_TABLE).update({ margen_manual: null, margen_manual_fecha: null }).eq("id", c.id));
+  }
+
+  function abrirConfig() {
+    setConfigError(false);
+    setConfigForm({ pctFunded: String(riesgoConfig.pctFunded), pctEval: String(riesgoConfig.pctEval), minimo: String(riesgoConfig.minimo) });
+  }
+
+  const pctValido = (v) => v !== "" && Number(v) > 0 && Number(v) <= 100;
+  const configValida =
+    !!configForm && pctValido(configForm.pctFunded) && pctValido(configForm.pctEval) && configForm.minimo !== "" && Number(configForm.minimo) >= 0;
+
+  async function guardarConfig() {
+    if (!configValida) return;
+    const nueva = { pctFunded: Number(configForm.pctFunded), pctEval: Number(configForm.pctEval), minimo: Number(configForm.minimo) };
+    setBusy(true);
+    setConfigError(false);
+    // Solo estas columnas: el upsert no pisa riesgo_maximo_diario del Journal.
+    const { error } = await supabase.from(CONFIG_TABLE).upsert({
+      user_id: session.user.id,
+      riesgo_pct_funded: nueva.pctFunded,
+      riesgo_pct_eval: nueva.pctEval,
+      riesgo_minimo: nueva.minimo,
+    });
+    setBusy(false);
+    if (error) {
+      console.error(error);
+      setConfigError(true);
+      return;
+    }
+    setRiesgoConfig(nueva);
+    setConfigForm(null);
   }
 
   function abrirCierre(c) {
@@ -409,10 +531,13 @@ export default function CuentasActivas({ session }) {
   // Lo secundario va en "Detalles", cerrado por defecto.
   function renderCuenta(c) {
     const esFunded = c.tipo === "funded";
-    const { dd, target, colchon, consistencia } = c;
+    const { dd, target, colchon, consistencia, riesgo } = c;
     const { dias, ultimoRetiro, pnlHoy } = c.rentables;
     const { diasObjetivo, minPnlDia } = c.config;
-    const color = margenColor(dd.margenRatio);
+    // Con aviso de riesgo, margen y riesgo van en ámbar/rojo; si no, el margen según lo que queda y el riesgo en dorado.
+    const colorAviso = riesgo.aviso === "rojo" ? "var(--loss)" : riesgo.aviso === "ambar" ? "var(--warn)" : null;
+    const color = colorAviso || margenColor(dd.margenRatio);
+    const colorRiesgo = colorAviso || (riesgo.sinMargen ? "var(--loss)" : "var(--accent)");
     const barPct = Math.max(0, Math.min(100, dd.margenRatio * 100));
     const abierto = !!detallesAbiertos[c.id];
 
@@ -432,18 +557,44 @@ export default function CuentasActivas({ session }) {
           </div>
         </div>
 
-        <div className="cta-row-label">Quedan hasta el DD</div>
-        <div className="cta-dd-margen cta-mono" style={{ color }}>{fmtUsd(dd.margen)}</div>
+        <div className="cta-kpis">
+          <div className="cta-kpi">
+            <div className="cta-row-label">Balance actual</div>
+            <div className="cta-kpi-valor cta-mono" title={fmtUsd(dd.balanceActual)}>{fmtUsdEntero(dd.balanceActual)}</div>
+          </div>
+          <div className="cta-kpi">
+            <div className="cta-row-label">Margen hasta el DD</div>
+            <div className="cta-kpi-valor cta-mono" style={{ color }} title={fmtUsd(dd.margen)}>{fmtUsdEntero(dd.margen)}</div>
+            {dd.margenDelPanel && <span className="cta-tag-panel" title={`Calculado con el Journal: ${fmtUsd(dd.margenCalculado)}`}>dato del panel</span>}
+          </div>
+          <div className="cta-kpi">
+            <div className="cta-row-label">Riesgo máx. por trade</div>
+            <div className="cta-kpi-valor cta-mono" style={{ color: colorRiesgo }} title={riesgo.sinMargen ? undefined : fmtUsd(riesgo.riesgo)}>
+              {riesgo.sinMargen ? "—" : fmtUsdEntero(riesgo.riesgo)}
+            </div>
+          </div>
+        </div>
         <div className="cta-bar cta-bar-lg">
           <div className="cta-bar-fill" style={{ width: `${barPct}%`, background: color }} />
         </div>
         {dd.margen <= 0 && <div className="cta-dd-alerta">DD alcanzado: el balance está en el DD máximo o por debajo.</div>}
 
-        <div className="cta-datos">
-          <div className="cta-row">
-            <span className="cta-row-label">Balance actual</span>
-            <span className="cta-mono" style={{ fontWeight: 600 }}>{fmtUsd(dd.balanceActual)}</span>
+        {!riesgo.sinMargen && (
+          <div className="cta-riesgo">
+            <div className="cta-block-sub">
+              Riesgo: {fmtPctSimple(riesgo.pct)} del margen, mínimo {fmtUsdRegla(riesgo.minimo)}
+              {riesgo.limitadoPor === "dd_diario" && " · limitado por el DD diario que queda hoy"}
+            </div>
+            {riesgo.aviso === "rojo" && (
+              <div className="cta-aviso cta-aviso-rojo">Un stop quema la cuenta: el margen no llega al riesgo mínimo de {fmtUsdRegla(riesgo.minimo)}.</div>
+            )}
+            {riesgo.aviso === "ambar" && (
+              <div className="cta-aviso">Con el mínimo arriesgas el {fmtPctSimple(riesgo.pctDelMargen)} del margen.</div>
+            )}
           </div>
+        )}
+
+        <div className="cta-datos">
           <div className="cta-row">
             <span className="cta-row-label">DD máximo</span>
             <span className="cta-mono">
@@ -472,20 +623,53 @@ export default function CuentasActivas({ session }) {
           </div>
         )}
 
+        <div className="cta-panel">
+          <label className="cta-row-label" htmlFor={`cta-panel-${c.id}`}>Margen del panel hoy $</label>
+          <div className="cta-panel-row">
+            <input
+              id={`cta-panel-${c.id}`}
+              type="number"
+              step="0.01"
+              inputMode="decimal"
+              value={margenPanel[c.id] ?? ""}
+              onChange={(e) => setMargenPanel((prev) => ({ ...prev, [c.id]: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && guardarMargenPanel(c)}
+              placeholder={dd.margenDelPanel ? String(dd.margen) : "Ej. 1350"}
+            />
+            <button className="cta-btn" onClick={() => guardarMargenPanel(c)} disabled={busy || !margenPanel[c.id] || isNaN(Number(margenPanel[c.id]))}>
+              Guardar
+            </button>
+          </div>
+          {dd.margenDelPanel && (
+            <div className="cta-block-sub">
+              Hoy se usa el dato del panel. Calculado con el Journal: {fmtUsd(dd.margenCalculado)}.{" "}
+              <button className="cta-link" onClick={() => quitarMargenPanel(c)}>Quitar</button>
+            </div>
+          )}
+        </div>
+
         <button className="cta-link-toggle" onClick={() => toggleDetalles(c.id)}>
           {abierto ? <ChevronUp size={13} /> : <ChevronDown size={13} />} Detalles
         </button>
 
         {abierto && (
           <div className="cta-detalles">
+            {dd.ddTipo !== "estatico" && (
+              <div className="cta-row">
+                <span className="cta-row-label">Máx. balance EOD</span>
+                <span className="cta-mono">{fmtUsd(dd.maxEOD)}</span>
+              </div>
+            )}
             <div className="cta-row">
-              <span className="cta-row-label">Máx. balance EOD</span>
-              <span className="cta-mono">{fmtUsd(dd.maxEOD)}</span>
-            </div>
-            <div className="cta-row">
-              <span className="cta-row-label">DD trailing</span>
+              <span className="cta-row-label">{dd.ddTipo === "estatico" ? "DD estático" : "DD trailing EOD"}</span>
               <span className="cta-mono">
-                {dd.fijado ? "fijado" : esFunded ? `se fija en ${fmtUsd(dd.nivelBloqueo)}` : `dinámico, ${fmtUsd(dd.distancia)}`}
+                {dd.ddTipo === "estatico"
+                  ? `${fmtUsd(dd.distancia)} bajo ${fmtUsd(dd.partida)}`
+                  : dd.fijado
+                    ? "fijado"
+                    : dd.nivelBloqueo != null
+                      ? `${fmtUsd(dd.distancia)}, se fija en ${fmtUsd(dd.nivelBloqueo)}`
+                      : `dinámico, ${fmtUsd(dd.distancia)}`}
               </span>
             </div>
             <div className="cta-row">
@@ -496,7 +680,7 @@ export default function CuentasActivas({ session }) {
               <div className="cta-row">
                 <span className="cta-row-label">DD diario ({fmtUsd(c.ddDiario)})</span>
                 <span className="cta-mono" style={{ color: ddColor(c.ddDiarioUsadoPct) }}>
-                  queda {fmtUsd(Math.max(0, c.ddDiario + Math.min(0, pnlHoy)))}
+                  queda {fmtUsd(c.ddDiarioRestante)}
                 </span>
               </div>
             )}
@@ -681,7 +865,7 @@ export default function CuentasActivas({ session }) {
         .cta-section-count { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--text); letter-spacing: 0; }
         .cta-section-empty { font-size: 12.5px; color: var(--text-dim); padding: 14px 16px; border: 1px dashed var(--border); border-radius: 12px; }
 
-        .cta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+        .cta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
         .cta-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
         .cta-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
         .cta-card-name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
@@ -691,13 +875,31 @@ export default function CuentasActivas({ session }) {
         .cta-tag.funded { background: rgba(79, 168, 118, 0.12); color: var(--win); border: 1px solid var(--win-dim); }
         .cta-tag.evaluacion { background: rgba(201, 162, 63, 0.1); color: var(--accent); border: 1px solid var(--accent-dim); }
 
-        .cta-dd-margen { font-size: 28px; font-weight: 700; margin: 2px 0 8px; letter-spacing: -0.01em; }
+        .cta-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 2px 0 10px; }
+        .cta-kpi { min-width: 0; }
+        .cta-kpi .cta-row-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .cta-kpi .cta-tag-panel { margin: 4px 0 0; }
+        .cta-kpi-valor { font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin-top: 3px; white-space: nowrap; }
         .cta-datos { margin-top: 14px; }
         .cta-aviso { font-size: 11.5px; line-height: 1.5; color: var(--warn); background: rgba(216, 162, 63, 0.08); border: 1px solid rgba(216, 162, 63, 0.3); border-radius: 6px; padding: 6px 8px; margin-top: 10px; }
         .cta-link { background: none; border: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
         .cta-detalles { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
         .cta-falta-usd { background: rgba(216, 162, 63, 0.12); border: 1px dashed var(--warn); color: var(--warn); border-radius: 5px; font-size: 11px; font-family: inherit; padding: 1px 6px; cursor: pointer; }
         .cta-retiro-acciones { display: flex; gap: 4px; }
+        .cta-tag-panel { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--accent); border: 1px solid var(--accent-dim); border-radius: 5px; padding: 0 5px; vertical-align: 1px; }
+        .cta-riesgo { margin-top: 8px; }
+        .cta-aviso.cta-aviso-rojo { color: #F0A496; background: rgba(193, 80, 63, 0.1); border-color: rgba(193, 80, 63, 0.45); }
+        .cta-panel { margin-top: 12px; }
+        .cta-panel-row { display: flex; gap: 8px; margin-top: 5px; }
+        .cta-panel-row input {
+          flex: 1; min-width: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+          border-radius: 8px; padding: 7px 10px; font-size: 13px; font-family: 'IBM Plex Mono', monospace;
+        }
+        .cta-panel-row .cta-btn { padding: 7px 12px; flex-shrink: 0; }
+        .cta-config { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 22px; }
+        .cta-config-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+        .cta-config-line .cta-icon-btn { margin-left: auto; }
+        .cta-config-head { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
         .cta-dd-alerta { font-size: 11.5px; color: #FBD8D2; background: var(--loss-dim); border-radius: 6px; padding: 5px 8px; margin-top: 8px; }
 
         .cta-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; font-size: 13px; }
@@ -767,7 +969,13 @@ export default function CuentasActivas({ session }) {
           .cta-header { padding: 20px 16px 4px; }
           .cta-main { padding: 16px; }
           .cta-grid { grid-template-columns: 1fr; }
+          .cta-kpis { grid-template-columns: 1fr; gap: 10px; }
+          .cta-kpi .cta-row-label { white-space: normal; }
+          .cta-kpi-valor { font-size: 28px; }
           .cta-pasada-nums { margin-left: 0; }
+          .cta-field input, .cta-panel-row input { font-size: 16px; }
+          .cta-config-fields { flex-wrap: wrap; }
+          .cta-config-fields .cta-field { flex: 1 1 calc(50% - 10px); }
         }
       `}</style>
 
@@ -776,7 +984,7 @@ export default function CuentasActivas({ session }) {
           <div className="cta-title"><Landmark size={22} /> Cuentas activas</div>
           <div className="cta-subtitle">
             Estado en tiempo real de tus cuentas de fondeo, calculado a partir de tus operaciones del Journal y tus retiros.
-            El DD es trailing EOD: solo cuentan los días ya cerrados.
+            El DD es trailing EOD (solo cuentan los días ya cerrados) o estático, según cada cuenta.
           </div>
         </div>
         <button className="cta-btn primary" onClick={abrirNuevo}><Plus size={14} /> Nueva cuenta</button>
@@ -792,6 +1000,44 @@ export default function CuentasActivas({ session }) {
         {!loaded && (
           <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 16 }}>Cargando tus cuentas…</div>
         )}
+
+        <div className="cta-config">
+          {configForm ? (
+            <>
+              <div className="cta-config-head">Riesgo por trade</div>
+              <div className="cta-field-row cta-config-fields">
+                <div className="cta-field">
+                  <label>% funded</label>
+                  <input type="number" min="1" max="100" step="1" inputMode="decimal" value={configForm.pctFunded} onChange={(e) => setConfigForm({ ...configForm, pctFunded: e.target.value })} aria-invalid={!pctValido(configForm.pctFunded)} />
+                </div>
+                <div className="cta-field">
+                  <label>% evaluación</label>
+                  <input type="number" min="1" max="100" step="1" inputMode="decimal" value={configForm.pctEval} onChange={(e) => setConfigForm({ ...configForm, pctEval: e.target.value })} aria-invalid={!pctValido(configForm.pctEval)} />
+                </div>
+                <div className="cta-field">
+                  <label>Mínimo $</label>
+                  <input type="number" min="0" step="1" inputMode="decimal" value={configForm.minimo} onChange={(e) => setConfigForm({ ...configForm, minimo: e.target.value })} aria-invalid={configForm.minimo === "" || !(Number(configForm.minimo) >= 0)} />
+                </div>
+              </div>
+              <div className="cta-field-hint">
+                Riesgo = el mayor entre el % del margen y el mínimo, sin pasar del margen ni de lo que queda de DD diario hoy.
+              </div>
+              {configError && <div className="cta-field-error" style={{ marginBottom: 10 }}>No se pudo guardar. Revisa que hayas ejecutado sql/cuentas_riesgo_migration.sql.</div>}
+              <div className="cta-modal-actions">
+                <button className="cta-btn" onClick={() => setConfigForm(null)}>Cancelar</button>
+                <button className="cta-btn primary" onClick={guardarConfig} disabled={busy || !configValida}>Guardar</button>
+              </div>
+            </>
+          ) : (
+            <div className="cta-config-line">
+              <span className="cta-row-label">Riesgo por trade</span>
+              <span className="cta-mono">
+                {fmtPctSimple(riesgoConfig.pctFunded)} funded · {fmtPctSimple(riesgoConfig.pctEval)} evaluación · mín. {fmtUsdRegla(riesgoConfig.minimo)}
+              </span>
+              <button className="cta-icon-btn" onClick={abrirConfig} title="Cambiar riesgo por trade"><Pencil size={13} /></button>
+            </div>
+          )}
+        </div>
 
         {loaded && (activas.length === 0 ? (
           <div className="cta-empty" style={{ marginBottom: 24 }}>
@@ -845,11 +1091,56 @@ export default function CuentasActivas({ session }) {
               <label>DD diario $</label>
               <input type="number" step="0.01" min="0" inputMode="decimal" value={form.dd_diario} onChange={(e) => setForm({ ...form, dd_diario: e.target.value })} placeholder="Opcional" />
             </div>
+            <div className="cta-field">
+              <label>Tipo de DD</label>
+              <div className="cta-seg">
+                {Object.entries(DD_TIPO_LABEL).map(([value, label]) => (
+                  <button type="button" key={value} className={form.dd_tipo === value ? "active" : ""} onClick={() => setForm({ ...form, dd_tipo: value })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="cta-field-row">
+              <div className="cta-field">
+                <label>DD máximo $</label>
+                <input type="number" step="0.01" min="0" inputMode="decimal" value={form.dd_maximo} onChange={(e) => setForm({ ...form, dd_maximo: e.target.value })} placeholder={String(DD_DISTANCIA)} aria-invalid={!!formErrores.dd_maximo} />
+                {formErrores.dd_maximo && <span className="cta-field-error">{formErrores.dd_maximo}</span>}
+              </div>
+              {form.dd_tipo !== "estatico" && (
+                <div className="cta-field">
+                  <label>Bloqueo del trailing $</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    value={form.dd_bloqueo}
+                    onChange={(e) => setForm({ ...form, dd_bloqueo: e.target.value })}
+                    placeholder={form.tipo === "funded" ? String(Math.round((Number(form.tamano) > 0 ? Number(form.tamano) : TAMANO_POR_DEFECTO) * DD_FACTOR_BLOQUEO * 100) / 100) : "Sin bloqueo"}
+                    aria-invalid={!!formErrores.dd_bloqueo}
+                  />
+                  {formErrores.dd_bloqueo && <span className="cta-field-error">{formErrores.dd_bloqueo}</span>}
+                </div>
+              )}
+            </div>
             <div className="cta-field-hint">
-              DD trailing EOD de {fmtUsd(DD_DISTANCIA)}
-              {form.tipo === "funded"
-                ? `, que se fija en tamaño × ${String(DD_FACTOR_BLOQUEO).replace(".", ",")}. Tamaño: ${fmtUsd(Number(form.tamano) > 0 ? form.tamano : TAMANO_POR_DEFECTO)}.`
-                : `. Target: +${fmtUsd(TARGET_EVALUACION)} sobre el tamaño.`}
+              {(() => {
+                const distancia = fmtUsd(Number(form.dd_maximo) > 0 ? form.dd_maximo : DD_DISTANCIA);
+                const tamano = Number(form.tamano) > 0 ? Number(form.tamano) : TAMANO_POR_DEFECTO;
+                const bloqueo = Number(form.dd_bloqueo) > 0 ? Number(form.dd_bloqueo) : null;
+                const dd =
+                  form.dd_tipo === "estatico"
+                    ? `DD estático de ${distancia} bajo el balance inicial (o el tamaño): no se mueve.`
+                    : bloqueo
+                      ? `DD trailing EOD de ${distancia}, que se fija en ${fmtUsd(bloqueo)}.`
+                      : form.tipo === "funded"
+                        ? `DD trailing EOD de ${distancia}, que se fija en tamaño × ${String(DD_FACTOR_BLOQUEO).replace(".", ",")}.`
+                        : `DD trailing EOD de ${distancia}, sin bloqueo.`;
+                return form.tipo === "funded"
+                  ? `${dd} Tamaño: ${fmtUsd(tamano)}.`
+                  : `${dd} Target: +${fmtUsd(TARGET_EVALUACION)} sobre el tamaño.`;
+              })()}
             </div>
 
             {form.tipo === "funded" && (
