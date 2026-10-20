@@ -56,6 +56,12 @@ function fmtUsd(n) {
   return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("es-ES", NUM_FMT)} $`;
 }
 
+// Cifras grandes de la tarjeta: redondeadas a dólares enteros (50.900 $).
+function fmtUsdEntero(n) {
+  const v = Math.round(Number(n) || 0);
+  return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("es-ES", { maximumFractionDigits: 0, useGrouping: "always" })} $`;
+}
+
 // Importes de Contabilidad (lo recibido en € de un retiro).
 function fmtEur(n) {
   const v = Number(n) || 0;
@@ -528,7 +534,10 @@ export default function CuentasActivas({ session }) {
     const { dd, target, colchon, consistencia, riesgo } = c;
     const { dias, ultimoRetiro, pnlHoy } = c.rentables;
     const { diasObjetivo, minPnlDia } = c.config;
-    const color = margenColor(dd.margenRatio);
+    // Con aviso de riesgo, margen y riesgo van en ámbar/rojo; si no, el margen según lo que queda y el riesgo en dorado.
+    const colorAviso = riesgo.aviso === "rojo" ? "var(--loss)" : riesgo.aviso === "ambar" ? "var(--warn)" : null;
+    const color = colorAviso || margenColor(dd.margenRatio);
+    const colorRiesgo = colorAviso || (riesgo.sinMargen ? "var(--loss)" : "var(--accent)");
     const barPct = Math.max(0, Math.min(100, dd.margenRatio * 100));
     const abierto = !!detallesAbiertos[c.id];
 
@@ -548,11 +557,23 @@ export default function CuentasActivas({ session }) {
           </div>
         </div>
 
-        <div className="cta-row-label">
-          Quedan hasta el DD
-          {dd.margenDelPanel && <span className="cta-tag-panel" title={`Calculado con el Journal: ${fmtUsd(dd.margenCalculado)}`}>dato del panel</span>}
+        <div className="cta-kpis">
+          <div className="cta-kpi">
+            <div className="cta-row-label">Balance actual</div>
+            <div className="cta-kpi-valor cta-mono" title={fmtUsd(dd.balanceActual)}>{fmtUsdEntero(dd.balanceActual)}</div>
+          </div>
+          <div className="cta-kpi">
+            <div className="cta-row-label">Margen hasta el DD</div>
+            <div className="cta-kpi-valor cta-mono" style={{ color }} title={fmtUsd(dd.margen)}>{fmtUsdEntero(dd.margen)}</div>
+            {dd.margenDelPanel && <span className="cta-tag-panel" title={`Calculado con el Journal: ${fmtUsd(dd.margenCalculado)}`}>dato del panel</span>}
+          </div>
+          <div className="cta-kpi">
+            <div className="cta-row-label">Riesgo máx. por trade</div>
+            <div className="cta-kpi-valor cta-mono" style={{ color: colorRiesgo }} title={riesgo.sinMargen ? undefined : fmtUsd(riesgo.riesgo)}>
+              {riesgo.sinMargen ? "—" : fmtUsdEntero(riesgo.riesgo)}
+            </div>
+          </div>
         </div>
-        <div className="cta-dd-margen cta-mono" style={{ color }}>{fmtUsd(dd.margen)}</div>
         <div className="cta-bar cta-bar-lg">
           <div className="cta-bar-fill" style={{ width: `${barPct}%`, background: color }} />
         </div>
@@ -560,12 +581,8 @@ export default function CuentasActivas({ session }) {
 
         {!riesgo.sinMargen && (
           <div className="cta-riesgo">
-            <div className="cta-row">
-              <span className="cta-row-label">Riesgo máx. por trade</span>
-              <span className="cta-mono cta-riesgo-valor">{fmtUsd(riesgo.riesgo)}</span>
-            </div>
             <div className="cta-block-sub">
-              {fmtPctSimple(riesgo.pct)} del margen, mínimo {fmtUsdRegla(riesgo.minimo)}
+              Riesgo: {fmtPctSimple(riesgo.pct)} del margen, mínimo {fmtUsdRegla(riesgo.minimo)}
               {riesgo.limitadoPor === "dd_diario" && " · limitado por el DD diario que queda hoy"}
             </div>
             {riesgo.aviso === "rojo" && (
@@ -578,10 +595,6 @@ export default function CuentasActivas({ session }) {
         )}
 
         <div className="cta-datos">
-          <div className="cta-row">
-            <span className="cta-row-label">Balance actual</span>
-            <span className="cta-mono" style={{ fontWeight: 600 }}>{fmtUsd(dd.balanceActual)}</span>
-          </div>
           <div className="cta-row">
             <span className="cta-row-label">DD máximo</span>
             <span className="cta-mono">
@@ -852,7 +865,7 @@ export default function CuentasActivas({ session }) {
         .cta-section-count { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--text); letter-spacing: 0; }
         .cta-section-empty { font-size: 12.5px; color: var(--text-dim); padding: 14px 16px; border: 1px dashed var(--border); border-radius: 12px; }
 
-        .cta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+        .cta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
         .cta-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
         .cta-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
         .cta-card-name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
@@ -862,7 +875,11 @@ export default function CuentasActivas({ session }) {
         .cta-tag.funded { background: rgba(79, 168, 118, 0.12); color: var(--win); border: 1px solid var(--win-dim); }
         .cta-tag.evaluacion { background: rgba(201, 162, 63, 0.1); color: var(--accent); border: 1px solid var(--accent-dim); }
 
-        .cta-dd-margen { font-size: 28px; font-weight: 700; margin: 2px 0 8px; letter-spacing: -0.01em; }
+        .cta-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 2px 0 10px; }
+        .cta-kpi { min-width: 0; }
+        .cta-kpi .cta-row-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .cta-kpi .cta-tag-panel { margin: 4px 0 0; }
+        .cta-kpi-valor { font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin-top: 3px; white-space: nowrap; }
         .cta-datos { margin-top: 14px; }
         .cta-aviso { font-size: 11.5px; line-height: 1.5; color: var(--warn); background: rgba(216, 162, 63, 0.08); border: 1px solid rgba(216, 162, 63, 0.3); border-radius: 6px; padding: 6px 8px; margin-top: 10px; }
         .cta-link { background: none; border: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
@@ -870,9 +887,7 @@ export default function CuentasActivas({ session }) {
         .cta-falta-usd { background: rgba(216, 162, 63, 0.12); border: 1px dashed var(--warn); color: var(--warn); border-radius: 5px; font-size: 11px; font-family: inherit; padding: 1px 6px; cursor: pointer; }
         .cta-retiro-acciones { display: flex; gap: 4px; }
         .cta-tag-panel { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--accent); border: 1px solid var(--accent-dim); border-radius: 5px; padding: 0 5px; vertical-align: 1px; }
-        .cta-riesgo { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
-        .cta-riesgo .cta-row { align-items: center; margin-bottom: 0; }
-        .cta-riesgo-valor { font-size: 18px; font-weight: 700; color: var(--accent); }
+        .cta-riesgo { margin-top: 8px; }
         .cta-aviso.cta-aviso-rojo { color: #F0A496; background: rgba(193, 80, 63, 0.1); border-color: rgba(193, 80, 63, 0.45); }
         .cta-panel { margin-top: 12px; }
         .cta-panel-row { display: flex; gap: 8px; margin-top: 5px; }
@@ -954,6 +969,9 @@ export default function CuentasActivas({ session }) {
           .cta-header { padding: 20px 16px 4px; }
           .cta-main { padding: 16px; }
           .cta-grid { grid-template-columns: 1fr; }
+          .cta-kpis { grid-template-columns: 1fr; gap: 10px; }
+          .cta-kpi .cta-row-label { white-space: normal; }
+          .cta-kpi-valor { font-size: 28px; }
           .cta-pasada-nums { margin-left: 0; }
           .cta-field input, .cta-panel-row input { font-size: 16px; }
           .cta-config-fields { flex-wrap: wrap; }
