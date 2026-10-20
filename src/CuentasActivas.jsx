@@ -31,6 +31,8 @@ const RETIROS_TABLE = "retiros";
 const CONFIG_TABLE = "configuracion";
 
 const TIPO_LABEL = { funded: "FUNDED", evaluacion: "EVALUACIÓN" };
+// Etiqueta corta de las tarjetas y filas de cerradas; cada tipo tiene su color (dorado funded, azul pizarra evaluación).
+const TAG_LABEL = { funded: "FUNDED", evaluacion: "EVAL" };
 const MODO_PAYOUT_LABEL = { dias_minimos: "Días mínimos", colchon: "Colchón" };
 const DD_TIPO_LABEL = { eod_trailing: "Trailing EOD", estatico: "Estático" };
 const RIESGO_CONFIG_POR_DEFECTO = { pctFunded: RIESGO_PCT_POR_DEFECTO, pctEval: RIESGO_PCT_POR_DEFECTO, minimo: RIESGO_MINIMO_POR_DEFECTO };
@@ -542,11 +544,11 @@ export default function CuentasActivas({ session }) {
     const abierto = !!detallesAbiertos[c.id];
 
     return (
-      <div key={c.id} className="cta-card">
+      <div key={c.id} className={`cta-card ${c.tipo}`}>
         <div className="cta-card-top">
-          <div style={{ minWidth: 0 }}>
-            <span className={`cta-tag ${c.tipo}`}>{TIPO_LABEL[c.tipo]}</span>
-            <div className="cta-card-name">{c.nombre}</div>
+          <div className="cta-card-title">
+            <span className="cta-card-name">{c.nombre}</span>
+            <span className={`cta-tag ${c.tipo}`}>{TAG_LABEL[c.tipo]}</span>
           </div>
           <div className="cta-card-actions">
             {esFunded && (
@@ -781,15 +783,16 @@ export default function CuentasActivas({ session }) {
     );
   }
 
-  function renderSeccion(titulo, lista, vacio) {
+  // Sección de un tipo de cuenta, con cabecera en su color. Sin cuentas no se muestra.
+  function renderSeccion(titulo, tipo, lista) {
+    if (lista.length === 0) return null;
     return (
-      <section className="cta-section">
-        <div className="cta-section-title">{titulo} <span className="cta-section-count">{lista.length}</span></div>
-        {lista.length === 0 ? (
-          <div className="cta-section-empty">{vacio}</div>
-        ) : (
-          <div className="cta-grid">{lista.map(renderCuenta)}</div>
-        )}
+      <section className={`cta-section ${tipo}`}>
+        <div className="cta-section-head">
+          <span className="cta-section-name cta-display">{titulo}</span>
+          <span className="cta-section-count">{lista.length}</span>
+        </div>
+        <div className="cta-grid">{lista.map(renderCuenta)}</div>
       </section>
     );
   }
@@ -808,7 +811,7 @@ export default function CuentasActivas({ session }) {
           <div key={c.id} className="cta-pasada-row">
             <div className="cta-pasada-info">
               <span className="cta-pasada-name">{c.nombre}</span>
-              <span className={`cta-tag ${c.tipo}`}>{TIPO_LABEL[c.tipo]}</span>
+              <span className={`cta-tag ${c.tipo}`}>{TAG_LABEL[c.tipo]}</span>
               <select className="cta-select" value={c.motivo_cierre || ""} onChange={(e) => cambiarMotivo(c, e.target.value)} title="Cambiar motivo">
                 {!c.motivo_cierre && <option value="" disabled>Sin motivo</option>}
                 {MOTIVOS_CIERRE.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -837,6 +840,7 @@ export default function CuentasActivas({ session }) {
           --bg: #0E1520; --surface: #161F2B; --surface-2: #1D2733; --border: #2A3648;
           --text: #E7ECF2; --text-dim: #8C99AA; --accent: #C9A23F; --accent-dim: #8A7027;
           --win: #4FA876; --win-dim: #2E5F44; --loss: #C1503F; --loss-dim: #6E2E26; --warn: #D8A23F;
+          --eval: #7E9CC4; --eval-dim: #3E5272;
           font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--text);
           min-height: 100vh; padding-bottom: 64px;
         }
@@ -861,19 +865,27 @@ export default function CuentasActivas({ session }) {
         .cta-empty { text-align: center; padding: 30px 16px; color: var(--text-dim); font-size: 13px; line-height: 1.6; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
 
         .cta-section { margin-bottom: 28px; }
-        .cta-section-title { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.12em; color: var(--text-dim); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .cta-section + .cta-section { border-top: 1px solid var(--border); padding-top: 24px; }
+        .cta-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .cta-section-name { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; padding-left: 10px; border-left: 3px solid; line-height: 1.1; }
+        .cta-section.funded .cta-section-name { color: var(--accent); border-color: var(--accent); }
+        .cta-section.evaluacion .cta-section-name { color: var(--eval); border-color: var(--eval); }
         .cta-section-count { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--text); letter-spacing: 0; }
         .cta-section-empty { font-size: 12.5px; color: var(--text-dim); padding: 14px 16px; border: 1px dashed var(--border); border-radius: 12px; }
 
         .cta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
         .cta-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
         .cta-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+        .cta-card.funded { border-left: 3px solid var(--accent); }
+        .cta-card.evaluacion { border-left: 3px solid var(--eval); }
+        .cta-card-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
         .cta-card-name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+        .cta-card-title .cta-tag { margin-bottom: 0; }
         .cta-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
         .cta-tag { display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 5px; margin-bottom: 5px; }
-        .cta-tag.funded { background: rgba(79, 168, 118, 0.12); color: var(--win); border: 1px solid var(--win-dim); }
-        .cta-tag.evaluacion { background: rgba(201, 162, 63, 0.1); color: var(--accent); border: 1px solid var(--accent-dim); }
+        .cta-tag.funded { background: rgba(201, 162, 63, 0.1); color: var(--accent); border: 1px solid var(--accent-dim); }
+        .cta-tag.evaluacion { background: rgba(126, 156, 196, 0.1); color: var(--eval); border: 1px solid var(--eval-dim); }
 
         .cta-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 2px 0 10px; }
         .cta-kpi { min-width: 0; }
@@ -1046,8 +1058,8 @@ export default function CuentasActivas({ session }) {
           </div>
         ) : (
           <>
-            {renderSeccion("FUNDED", funded, "No tienes cuentas funded activas.")}
-            {renderSeccion("EVALUACIONES", evaluaciones, "No tienes evaluaciones activas.")}
+            {renderSeccion("Funded", "funded", funded)}
+            {renderSeccion("Evaluaciones", "evaluacion", evaluaciones)}
           </>
         ))}
 
