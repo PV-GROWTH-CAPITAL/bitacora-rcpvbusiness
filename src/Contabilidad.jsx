@@ -19,7 +19,8 @@ const EMPRESAS_PRESET = [
   "ALPHA CAPITAL",
   "TRADEIFY",
   "FTMO",
-  "5ERS"
+  "5ERS",
+  "NYS MARKETS"
 ];
 
 function fmtMoney(n) {

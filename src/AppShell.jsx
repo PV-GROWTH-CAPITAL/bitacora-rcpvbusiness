@@ -21,7 +21,7 @@ export default function AppShell({ session, onLogout }) {
   const [passwordMsg, setPasswordMsg] = useState({ type: "", text: "" });
   const [passwordBusy, setPasswordBusy] = useState(false);
 
-  const CONTABILIDAD_EMPRESAS = ["MY FUNDED FUTURES", "APEX", "LUCID TRADING", "TOPSTEP", "FUNDING PIPS", "FUNDED NEXT", "ALPHA CAPITAL", "TRADEIFY", "FTMO", "5ERS"];
+  const CONTABILIDAD_EMPRESAS = ["MY FUNDED FUTURES", "APEX", "LUCID TRADING", "TOPSTEP", "FUNDING PIPS", "FUNDED NEXT", "ALPHA CAPITAL", "TRADEIFY", "FTMO", "5ERS", "NYS MARKETS"];
 
   const analisisPages = ["journal", "estrategia", "cuentas-activas"];
   const analisisActivo = analisisPages.includes(page);
