@@ -77,6 +77,7 @@ async function comprimirImagen(file) {
 }
 
 const formVacio = () => ({ cuenta: "", importe: "", fecha: todayIsoLocal() });
+const OTRA = "__otra__"; // valor del desplegable para escribir una cuenta que no está en Cuentas activas
 
 export default function Payouts({ session }) {
   const [payouts, setPayouts] = useState([]);
@@ -85,6 +86,8 @@ export default function Payouts({ session }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [filtroCuenta, setFiltroCuenta] = useState("TODAS");
+  const [misCuentas, setMisCuentas] = useState([]); // tabla `cuentas`: [{ nombre, activa }]
+  const [cuentaOtra, setCuentaOtra] = useState(false); // el modal está en modo "escribir otra cuenta"
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null); // payout que se edita, o null si es nuevo
@@ -132,6 +135,21 @@ export default function Payouts({ session }) {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    let vivo = true;
+    conReintento(() => supabase.from("cuentas").select("nombre, activa").order("nombre", { ascending: true })).then(({ data, error: err }) => {
+      if (!vivo) return;
+      if (err) return console.error(err);
+      setMisCuentas((data || []).filter((c) => c.nombre));
+    });
+    return () => { vivo = false; };
+  }, []);
+
+  // Cuentas del desplegable del modal: las de Cuentas activas, separadas en activas y cerradas.
+  const cuentasActivas = useMemo(() => Array.from(new Set(misCuentas.filter((c) => c.activa !== false).map((c) => c.nombre))), [misCuentas]);
+  const cuentasCerradas = useMemo(() => Array.from(new Set(misCuentas.filter((c) => c.activa === false).map((c) => c.nombre))), [misCuentas]);
+  const nombresConocidos = useMemo(() => new Set(misCuentas.map((c) => c.nombre)), [misCuentas]);
 
   const cuentas = useMemo(
     () => Array.from(new Set(payouts.map((p) => p.cuenta))).sort((a, b) => a.localeCompare(b, "es")),
@@ -187,6 +205,7 @@ export default function Payouts({ session }) {
   function abrirNuevo() {
     setEditing(null);
     setForm({ ...formVacio(), cuenta: filtroCuenta !== "TODAS" ? filtroCuenta : "" });
+    setCuentaOtra(false);
     cambiarImagen(null);
     setShowForm(true);
   }
@@ -194,6 +213,7 @@ export default function Payouts({ session }) {
   function abrirEditar(p) {
     setEditing(p);
     setForm({ cuenta: p.cuenta, importe: String(p.importe_eur), fecha: p.fecha });
+    setCuentaOtra(false);
     cambiarImagen(null);
     setShowForm(true);
   }
@@ -406,8 +426,8 @@ export default function Payouts({ session }) {
         .po-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
         .po-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; min-width: 0; }
         .po-field label { font-size: 12px; color: var(--text-dim); }
-        .po-field input { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; width: 100%; color-scheme: dark; }
-        .po-field input:focus { outline: none; border-color: var(--accent-dim); }
+        .po-field input, .po-field select { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; width: 100%; color-scheme: dark; }
+        .po-field input:focus, .po-field select:focus { outline: none; border-color: var(--accent-dim); }
         .po-fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
         .po-drop {
@@ -627,17 +647,44 @@ export default function Payouts({ session }) {
 
             <div className="po-field">
               <label htmlFor="po-cuenta">Cuenta</label>
-              <input
+              <select
                 id="po-cuenta"
-                list="po-cuentas"
-                value={form.cuenta}
-                onChange={(e) => setForm({ ...form, cuenta: e.target.value })}
-                placeholder="Ej. APEX 50K #3"
-                autoComplete="off"
-              />
-              <datalist id="po-cuentas">
-                {cuentas.map((c) => <option key={c} value={c} />)}
-              </datalist>
+                value={cuentaOtra ? OTRA : form.cuenta}
+                onChange={(e) => {
+                  if (e.target.value === OTRA) {
+                    setCuentaOtra(true);
+                    setForm({ ...form, cuenta: "" });
+                  } else {
+                    setCuentaOtra(false);
+                    setForm({ ...form, cuenta: e.target.value });
+                  }
+                }}
+              >
+                <option value="" disabled>Elige una cuenta…</option>
+                {cuentasActivas.length > 0 && (
+                  <optgroup label="Cuentas activas">
+                    {cuentasActivas.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                )}
+                {cuentasCerradas.length > 0 && (
+                  <optgroup label="Cuentas cerradas">
+                    {cuentasCerradas.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                )}
+                {form.cuenta && !cuentaOtra && !nombresConocidos.has(form.cuenta) && (
+                  <option value={form.cuenta}>{form.cuenta}</option>
+                )}
+                <option value={OTRA}>Otra cuenta…</option>
+              </select>
+              {cuentaOtra && (
+                <input
+                  value={form.cuenta}
+                  onChange={(e) => setForm({ ...form, cuenta: e.target.value })}
+                  placeholder="Nombre de la cuenta"
+                  autoComplete="off"
+                  autoFocus
+                />
+              )}
             </div>
 
             <div className="po-fila2">
