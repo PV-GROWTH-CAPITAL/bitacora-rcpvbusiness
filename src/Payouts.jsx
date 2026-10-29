@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Plus, X, Trash2, Pencil, HandCoins, ImagePlus, ChevronLeft, ChevronRight, Maximize2, Loader2 } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 
-const TABLA = "payouts";
+const TABLA_RETIROS = "retiros"; // fuente de verdad del cobro: la comparten Contabilidad y Cuentas activas
+const TABLA_PAYOUTS = "payouts"; // solo la captura de cada retiro
 const BUCKET = "payout-images";
 const URL_TTL_S = 3600; // las URLs firmadas del bucket privado duran 1 h
 const LADO_MAX = 2400; // px del lado mayor tras comprimir: el texto de la captura sigue legible a pantalla completa
@@ -76,11 +77,14 @@ async function comprimirImagen(file) {
   return { blob, w, h };
 }
 
-const formVacio = () => ({ cuenta: "", importe: "", fecha: todayIsoLocal() });
+const EMPRESAS = ["MY FUNDED FUTURES", "APEX", "LUCID TRADING", "TOPSTEP", "FUNDING PIPS", "FUNDED NEXT", "ALPHA CAPITAL", "TRADEIFY", "FTMO", "5ERS", "NYS MARKETS"];
+const formVacio = () => ({ cuenta: "", empresa: "", importe: "", importeUsd: "", fecha: todayIsoLocal() });
 const OTRA = "__otra__"; // valor del desplegable para escribir una cuenta que no está en Cuentas activas
 
 export default function Payouts({ session }) {
-  const [payouts, setPayouts] = useState([]);
+  const [retiros, setRetiros] = useState([]);
+  const [capturas, setCapturas] = useState({}); // { [retiro_id]: { id, imagen_path } }
+  const [compras, setCompras] = useState([]); // cuentas_compradas: solo para proponer la empresa de una cuenta
   const [urls, setUrls] = useState({});
   const urlsRef = useRef({}); // { path: { url, hasta } }
   const [loaded, setLoaded] = useState(false);
@@ -90,7 +94,8 @@ export default function Payouts({ session }) {
   const [cuentaOtra, setCuentaOtra] = useState(false); // el modal está en modo "escribir otra cuenta"
 
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null); // payout que se edita, o null si es nuevo
+  const [editing, setEditing] = useState(null); // retiro (con su captura) que se edita, o null si es nuevo
+  const [empresaManual, setEmpresaManual] = useState(false); // el usuario ya eligió empresa: no se la pisa al cambiar de cuenta
   const [form, setForm] = useState(formVacio);
   const [imagen, setImagen] = useState(null); // { blob, preview, w, h }
   const [procesando, setProcesando] = useState(false);
@@ -98,7 +103,7 @@ export default function Payouts({ session }) {
   const [arrastrando, setArrastrando] = useState(false);
   const inputFileRef = useRef(null);
 
-  const [visorIdx, setVisorIdx] = useState(null);
+  const [visorId, setVisorId] = useState(null); // id del retiro cuya captura está abierta en el visor
   const toqueX = useRef(null);
 
   // Firma solo las rutas que no tienen URL o cuya URL está a punto de caducar.
@@ -117,17 +122,20 @@ export default function Payouts({ session }) {
   }, []);
 
   const cargar = useCallback(async () => {
-    const res = await conReintento(() =>
-      supabase.from(TABLA).select("*").order("fecha", { ascending: false }).order("created_at", { ascending: false })
-    );
-    if (res.error) {
-      console.error(res.error);
+    const [r, c] = await Promise.all([
+      conReintento(() => supabase.from(TABLA_RETIROS).select("*").order("fecha", { ascending: false }).order("created_at", { ascending: false })),
+      conReintento(() => supabase.from(TABLA_PAYOUTS).select("id, retiro_id, imagen_path")),
+    ]);
+    if (r.error || c.error) {
+      console.error(r.error || c.error);
       setError("Ocurrió un error al cargar los payouts desde Supabase.");
     } else {
       setError("");
-      const filas = res.data || [];
-      setPayouts(filas);
-      await firmar(filas.map((p) => p.imagen_path));
+      const mapa = {};
+      (c.data || []).forEach((x) => { if (x.retiro_id) mapa[x.retiro_id] = x; });
+      setRetiros(r.data || []);
+      setCapturas(mapa);
+      await firmar((c.data || []).map((x) => x.imagen_path));
     }
     setLoaded(true);
   }, [firmar]);
@@ -146,14 +154,25 @@ export default function Payouts({ session }) {
     return () => { vivo = false; };
   }, []);
 
+  useEffect(() => {
+    let vivo = true;
+    conReintento(() => supabase.from("cuentas_compradas").select("cuenta, proveedor")).then(({ data, error: err }) => {
+      if (vivo && !err) setCompras(data || []);
+    });
+    return () => { vivo = false; };
+  }, []);
+
   // Cuentas del desplegable del modal: las de Cuentas activas, separadas en activas y cerradas.
   const cuentasActivas = useMemo(() => Array.from(new Set(misCuentas.filter((c) => c.activa !== false).map((c) => c.nombre))), [misCuentas]);
   const cuentasCerradas = useMemo(() => Array.from(new Set(misCuentas.filter((c) => c.activa === false).map((c) => c.nombre))), [misCuentas]);
   const nombresConocidos = useMemo(() => new Set(misCuentas.map((c) => c.nombre)), [misCuentas]);
 
+  // Un payout = un retiro + su captura (si la tiene).
+  const filas = useMemo(() => retiros.map((r) => ({ ...r, captura: capturas[r.id] || null })), [retiros, capturas]);
+
   const cuentas = useMemo(
-    () => Array.from(new Set(payouts.map((p) => p.cuenta))).sort((a, b) => a.localeCompare(b, "es")),
-    [payouts]
+    () => Array.from(new Set(filas.map((f) => f.cuenta).filter(Boolean))).sort((a, b) => a.localeCompare(b, "es")),
+    [filas]
   );
 
   useEffect(() => {
@@ -161,23 +180,46 @@ export default function Payouts({ session }) {
   }, [cuentas, filtroCuenta]);
 
   const lista = useMemo(
-    () => (filtroCuenta === "TODAS" ? payouts : payouts.filter((p) => p.cuenta === filtroCuenta)),
-    [payouts, filtroCuenta]
+    () => (filtroCuenta === "TODAS" ? filas : filas.filter((f) => f.cuenta === filtroCuenta)),
+    [filas, filtroCuenta]
   );
 
-  const total = useMemo(() => lista.reduce((s, p) => s + (Number(p.importe_eur) || 0), 0), [lista]);
+  const total = useMemo(() => lista.reduce((s, f) => s + (Number(f.monto) || 0), 0), [lista]);
   const primeraFecha = lista.length ? lista[lista.length - 1].fecha : null;
+  const sinCaptura = useMemo(() => lista.filter((f) => !f.captura).length, [lista]);
+
+  // Empresas del desplegable del modal: las de siempre más cualquier otra que ya aparezca en tus retiros.
+  const empresas = useMemo(() => {
+    const extra = retiros.map((r) => r.proveedor).filter((e) => e && !EMPRESAS.includes(e));
+    return [...EMPRESAS, ...Array.from(new Set(extra))];
+  }, [retiros]);
+
+  // Empresa que ya usas con una cuenta: la del último retiro, o la de la compra de esa cuenta.
+  const empresaDeCuenta = useCallback((cuenta) => {
+    if (!cuenta) return "";
+    const deRetiro = retiros.find((r) => r.cuenta === cuenta && r.proveedor);
+    if (deRetiro) return deRetiro.proveedor;
+    const deCompra = compras.find((c) => c.cuenta === cuenta && c.proveedor);
+    return deCompra ? deCompra.proveedor.trim().toUpperCase() : "";
+  }, [retiros, compras]);
 
   // --- VISOR A PANTALLA COMPLETA ---
-  const visor = visorIdx !== null ? lista[visorIdx] : null;
+  // Solo se navega entre los retiros que tienen captura.
+  const conCaptura = useMemo(() => lista.filter((f) => f.captura), [lista]);
+  const visorIdx = visorId === null ? -1 : conCaptura.findIndex((f) => f.id === visorId);
+  const visor = visorIdx >= 0 ? conCaptura[visorIdx] : null;
   const moverVisor = useCallback((delta) => {
-    setVisorIdx((i) => (i === null || lista.length === 0 ? i : (i + delta + lista.length) % lista.length));
-  }, [lista.length]);
+    setVisorId((id) => {
+      if (id === null || conCaptura.length === 0) return id;
+      const i = conCaptura.findIndex((f) => f.id === id);
+      return conCaptura[(i + delta + conCaptura.length) % conCaptura.length].id;
+    });
+  }, [conCaptura]);
 
   useEffect(() => {
-    if (visorIdx === null) return;
+    if (visorId === null) return;
     function onKey(e) {
-      if (e.key === "Escape") setVisorIdx(null);
+      if (e.key === "Escape") setVisorId(null);
       else if (e.key === "ArrowRight") moverVisor(1);
       else if (e.key === "ArrowLeft") moverVisor(-1);
     }
@@ -188,11 +230,12 @@ export default function Payouts({ session }) {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = overflowPrevio;
     };
-  }, [visorIdx, moverVisor]);
+  }, [visorId, moverVisor]);
 
+  // Si el retiro del visor desaparece (se borra o se filtra), se cierra.
   useEffect(() => {
-    if (visorIdx !== null && visorIdx >= lista.length) setVisorIdx(lista.length ? lista.length - 1 : null);
-  }, [lista.length, visorIdx]);
+    if (visorId !== null && visorIdx < 0) setVisorId(null);
+  }, [visorId, visorIdx]);
 
   // --- FORMULARIO ---
   const cambiarImagen = useCallback((nueva) => {
@@ -204,15 +247,25 @@ export default function Payouts({ session }) {
 
   function abrirNuevo() {
     setEditing(null);
-    setForm({ ...formVacio(), cuenta: filtroCuenta !== "TODAS" ? filtroCuenta : "" });
+    const cuenta = filtroCuenta !== "TODAS" ? filtroCuenta : "";
+    const empresa = empresaDeCuenta(cuenta);
+    setForm({ ...formVacio(), cuenta, empresa });
+    setEmpresaManual(false);
     setCuentaOtra(false);
     cambiarImagen(null);
     setShowForm(true);
   }
 
-  function abrirEditar(p) {
-    setEditing(p);
-    setForm({ cuenta: p.cuenta, importe: String(p.importe_eur), fecha: p.fecha });
+  function abrirEditar(f) {
+    setEditing(f);
+    setForm({
+      cuenta: f.cuenta || "",
+      empresa: f.proveedor || "",
+      importe: String(f.monto),
+      importeUsd: f.monto_usd === null || f.monto_usd === undefined ? "" : String(f.monto_usd),
+      fecha: f.fecha,
+    });
+    setEmpresaManual(true);
     setCuentaOtra(false);
     cambiarImagen(null);
     setShowForm(true);
@@ -258,60 +311,79 @@ export default function Payouts({ session }) {
     };
   }, [showForm, cerrarForm, procesarArchivo]);
 
-  const importeValido = form.importe !== "" && Number(form.importe) >= 0;
-  const puedeGuardar = form.cuenta.trim() && importeValido && form.fecha && (imagen || editing) && !procesando && !guardando;
+  const importeValido = form.importe !== "" && Number(form.importe) > 0;
+  const usdValido = form.importeUsd === "" || Number(form.importeUsd) >= 0;
+  const puedeGuardar = form.cuenta.trim() && form.empresa.trim() && importeValido && usdValido && form.fecha
+    && (imagen || editing) && !procesando && !guardando;
 
   async function guardar() {
     if (!puedeGuardar) return;
     setGuardando(true);
     setError("");
     let nuevoPath = null;
+    let retiroNuevoId = null;
     try {
       if (imagen) {
         nuevoPath = `${session.user.id}/${crypto.randomUUID()}.${EXTENSION[imagen.blob.type] || "jpg"}`;
         const up = await supabase.storage.from(BUCKET).upload(nuevoPath, imagen.blob, { contentType: imagen.blob.type, upsert: false });
         if (up.error) throw up.error;
       }
-      const registro = {
-        cuenta: form.cuenta.trim(),
-        importe_eur: Number(form.importe),
+
+      // El cobro vive en `retiros`, igual que lo guardan Contabilidad y Cuentas activas.
+      const campos = {
         fecha: form.fecha,
-        ...(nuevoPath ? { imagen_path: nuevoPath } : {}),
+        cuenta: form.cuenta.trim(),
+        proveedor: form.empresa.trim().toUpperCase(),
+        monto: Number(form.importe), // € recibidos: lo que usa Contabilidad
+        monto_usd: form.importeUsd === "" ? null : Number(form.importeUsd), // $ que salen de la cuenta: lo que resta Cuentas activas
       };
-      const res = editing
-        ? await supabase.from(TABLA).update(registro).eq("id", editing.id)
-        : await supabase.from(TABLA).insert({ ...registro, user_id: session.user.id });
-      if (res.error) {
-        if (nuevoPath) await supabase.storage.from(BUCKET).remove([nuevoPath]);
-        throw res.error;
+      let retiroId = editing?.id;
+      if (editing) {
+        const res = await supabase.from(TABLA_RETIROS).update(campos).eq("id", editing.id);
+        if (res.error) throw res.error;
+      } else {
+        const res = await supabase.from(TABLA_RETIROS).insert({ ...campos, notas: "", user_id: session.user.id }).select("id").single();
+        if (res.error) throw res.error;
+        retiroId = retiroNuevoId = res.data.id;
       }
-      if (editing && nuevoPath && editing.imagen_path) {
-        await supabase.storage.from(BUCKET).remove([editing.imagen_path]);
+
+      if (nuevoPath) {
+        const res = editing?.captura
+          ? await supabase.from(TABLA_PAYOUTS).update({ imagen_path: nuevoPath }).eq("id", editing.captura.id)
+          : await supabase.from(TABLA_PAYOUTS).insert({ user_id: session.user.id, retiro_id: retiroId, imagen_path: nuevoPath });
+        if (res.error) throw res.error;
+        if (editing?.captura?.imagen_path) await supabase.storage.from(BUCKET).remove([editing.captura.imagen_path]);
       }
+
       setGuardando(false);
       setShowForm(false);
       cambiarImagen(null);
       await cargar();
     } catch (e) {
       console.error(e);
+      // Que no quede a medias: sin captura subida y, si el retiro era nuevo, sin retiro suelto.
+      if (nuevoPath) await supabase.storage.from(BUCKET).remove([nuevoPath]);
+      if (retiroNuevoId) await supabase.from(TABLA_RETIROS).delete().eq("id", retiroNuevoId);
       setError("No se pudo guardar el payout. Revisa la conexión e inténtalo de nuevo.");
       setGuardando(false);
     }
   }
 
-  async function borrar(p) {
-    if (!window.confirm(`¿Borrar el payout de ${p.cuenta} (${fmtEur(p.importe_eur)})?\nSe borrará también la captura.`)) return;
-    const res = await supabase.from(TABLA).delete().eq("id", p.id);
+  async function borrar(f) {
+    const aviso = `¿Borrar el retiro de ${f.cuenta || "la cuenta"} (${fmtEur(f.monto)}) del ${fmtDate(f.fecha, true)}?\n` +
+      "También desaparecerá de Contabilidad y de Cuentas activas" + (f.captura ? ", junto con su captura." : ".");
+    if (!window.confirm(aviso)) return;
+    const res = await supabase.from(TABLA_RETIROS).delete().eq("id", f.id); // la fila de payouts se borra en cascada
     if (res.error) {
       console.error(res.error);
       setError("No se pudo borrar el payout.");
       return;
     }
-    if (p.imagen_path) await supabase.storage.from(BUCKET).remove([p.imagen_path]);
+    if (f.captura?.imagen_path) await supabase.storage.from(BUCKET).remove([f.captura.imagen_path]);
     await cargar();
   }
 
-  const previewModal = imagen?.preview || (editing ? urls[editing.imagen_path] : null);
+  const previewModal = imagen?.preview || (editing?.captura ? urls[editing.captura.imagen_path] : null);
 
   return (
     <div className="po-app">
@@ -376,6 +448,10 @@ export default function Payouts({ session }) {
         }
         .po-card:hover .po-shot-zoom, .po-shot:focus-visible .po-shot-zoom { opacity: 1; }
         .po-shot:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .po-shot.vacia { cursor: default; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-dim); }
+        .po-shot.vacia .po-shot-ph { width: auto; height: auto; }
+        .po-vacia-txt { font-size: 12.5px; letter-spacing: 0.04em; }
+        .po-nota { font-size: 11.5px; color: var(--text-dim); margin: -2px 0 6px; }
 
         .po-strip { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); min-height: 44px; }
         .po-strip-cuenta { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -467,7 +543,7 @@ export default function Payouts({ session }) {
           <div>
             <div className="po-display" style={{ fontSize: 26, fontWeight: 600 }}>Payouts</div>
             <div className="po-mono" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4 }}>
-              Capturas de cada cobro y su importe en euros
+              Tus retiros con su captura · se sincronizan con Contabilidad y Cuentas activas
             </div>
           </div>
           <button className="po-btn primary" onClick={abrirNuevo}><Plus size={15} /> Añadir payout</button>
@@ -490,7 +566,7 @@ export default function Payouts({ session }) {
             <div className="po-resumen-sub">
               {lista.length === 0
                 ? "Sin payouts registrados"
-                : `${lista.length} ${lista.length === 1 ? "payout" : "payouts"} · desde ${fmtDate(primeraFecha, true)}`}
+                : `${lista.length} ${lista.length === 1 ? "payout" : "payouts"} · desde ${fmtDate(primeraFecha, true)}${sinCaptura > 0 ? ` · ${sinCaptura} sin captura` : ""}`}
             </div>
           </div>
           {cuentas.length > 0 && (
@@ -520,25 +596,35 @@ export default function Payouts({ session }) {
           </div>
         ) : (
           <div className="po-grid">
-            {lista.map((p, i) => {
-              const url = urls[p.imagen_path];
+            {lista.map((f) => {
+              const url = f.captura ? urls[f.captura.imagen_path] : null;
               return (
-                <article key={p.id} className="po-card">
-                  <button className="po-shot" onClick={() => setVisorIdx(i)} aria-label={`Ver captura de ${p.cuenta} a pantalla completa`}>
-                    {url ? (
-                      <img src={url} alt={`Payout ${p.cuenta} ${fmtEur(p.importe_eur)}`} loading="lazy" onLoad={(e) => e.currentTarget.classList.add("on")} />
-                    ) : (
-                      <span className="po-shot-ph"><ImagePlus size={28} /></span>
-                    )}
-                    <span className="po-shot-zoom" aria-hidden="true"><Maximize2 size={14} /></span>
-                  </button>
+                <article key={f.id} className="po-card">
+                  {f.captura ? (
+                    <button className="po-shot" onClick={() => setVisorId(f.id)} aria-label={`Ver captura de ${f.cuenta} a pantalla completa`}>
+                      {url ? (
+                        <img src={url} alt={`Payout ${f.cuenta} ${fmtEur(f.monto)}`} loading="lazy" onLoad={(e) => e.currentTarget.classList.add("on")} />
+                      ) : (
+                        <span className="po-shot-ph"><ImagePlus size={28} /></span>
+                      )}
+                      <span className="po-shot-zoom" aria-hidden="true"><Maximize2 size={14} /></span>
+                    </button>
+                  ) : (
+                    <div className="po-shot vacia">
+                      <span className="po-shot-ph"><ImagePlus size={26} /></span>
+                      <span className="po-vacia-txt">Sin captura</span>
+                      <button className="po-btn" onClick={() => abrirEditar(f)}><Plus size={14} /> Añadir captura</button>
+                    </div>
+                  )}
                   <div className="po-strip">
-                    <span className="po-strip-cuenta" title={`${p.cuenta} · ${fmtDate(p.fecha, true)}`}>{p.cuenta}</span>
-                    <span className="po-strip-acc">
-                      <button className="po-icon-btn" onClick={() => abrirEditar(p)} aria-label="Editar payout" title="Editar"><Pencil size={13} /></button>
-                      <button className="po-icon-btn danger" onClick={() => borrar(p)} aria-label="Borrar payout" title="Borrar"><Trash2 size={13} /></button>
+                    <span className="po-strip-cuenta" title={`${f.cuenta || "Sin cuenta"}${f.proveedor ? ` · ${f.proveedor}` : ""} · ${fmtDate(f.fecha, true)}`}>
+                      {f.cuenta || "Sin cuenta"}
                     </span>
-                    <span className="po-strip-importe po-mono">{fmtEur(p.importe_eur)}</span>
+                    <span className="po-strip-acc">
+                      <button className="po-icon-btn" onClick={() => abrirEditar(f)} aria-label="Editar payout" title="Editar"><Pencil size={13} /></button>
+                      <button className="po-icon-btn danger" onClick={() => borrar(f)} aria-label="Borrar payout" title="Borrar"><Trash2 size={13} /></button>
+                    </span>
+                    <span className="po-strip-importe po-mono">{fmtEur(f.monto)}</span>
                   </div>
                 </article>
               );
@@ -554,7 +640,7 @@ export default function Payouts({ session }) {
           role="dialog"
           aria-modal="true"
           aria-label={`Captura de ${visor.cuenta}`}
-          onClick={() => setVisorIdx(null)}
+          onClick={() => setVisorId(null)}
           onTouchStart={(e) => { toqueX.current = e.touches[0].clientX; }}
           onTouchEnd={(e) => {
             if (toqueX.current === null) return;
@@ -563,28 +649,28 @@ export default function Payouts({ session }) {
             if (Math.abs(dx) > 50) moverVisor(dx < 0 ? 1 : -1);
           }}
         >
-          <button className="po-visor-btn close" onClick={() => setVisorIdx(null)} aria-label="Cerrar visor" autoFocus><X size={18} /></button>
-          {lista.length > 1 && (
+          <button className="po-visor-btn close" onClick={() => setVisorId(null)} aria-label="Cerrar visor" autoFocus><X size={18} /></button>
+          {conCaptura.length > 1 && (
             <>
               <button className="po-visor-btn prev" onClick={(e) => { e.stopPropagation(); moverVisor(-1); }} aria-label="Anterior"><ChevronLeft size={20} /></button>
               <button className="po-visor-btn next" onClick={(e) => { e.stopPropagation(); moverVisor(1); }} aria-label="Siguiente"><ChevronRight size={20} /></button>
             </>
           )}
           <div className="po-visor-stage">
-            {urls[visor.imagen_path] && (
-              <img src={urls[visor.imagen_path]} alt={`Payout ${visor.cuenta} ${fmtEur(visor.importe_eur)}`} onClick={(e) => e.stopPropagation()} />
+            {urls[visor.captura.imagen_path] && (
+              <img src={urls[visor.captura.imagen_path]} alt={`Payout ${visor.cuenta} ${fmtEur(visor.monto)}`} onClick={(e) => e.stopPropagation()} />
             )}
           </div>
           <div className="po-visor-foot" onClick={(e) => e.stopPropagation()}>
-            <b>{visor.cuenta}</b>
+            <b>{visor.cuenta || "Sin cuenta"}</b>
             <span className="sep" />
-            <span className="imp po-mono">{fmtEur(visor.importe_eur)}</span>
+            <span className="imp po-mono">{fmtEur(visor.monto)}</span>
             <span className="sep" />
             <span className="po-mono">{fmtDate(visor.fecha, true)}</span>
-            {lista.length > 1 && (
+            {conCaptura.length > 1 && (
               <>
                 <span className="sep" />
-                <span className="po-mono">{visorIdx + 1} / {lista.length}</span>
+                <span className="po-mono">{visorIdx + 1} / {conCaptura.length}</span>
               </>
             )}
           </div>
@@ -597,7 +683,7 @@ export default function Payouts({ session }) {
           <div className="po-modal" role="dialog" aria-modal="true" aria-labelledby="po-modal-titulo" onClick={(e) => e.stopPropagation()}>
             <div className="po-modal-head">
               <div id="po-modal-titulo" className="po-display" style={{ fontSize: 20, fontWeight: 600 }}>
-                {editing ? "Editar payout" : "Nuevo payout"}
+                {editing ? (editing.captura ? "Editar payout" : "Añadir captura / editar") : "Nuevo payout"}
               </div>
               <button className="po-icon-btn" onClick={cerrarForm} aria-label="Cerrar"><X size={18} /></button>
             </div>
@@ -656,7 +742,8 @@ export default function Payouts({ session }) {
                     setForm({ ...form, cuenta: "" });
                   } else {
                     setCuentaOtra(false);
-                    setForm({ ...form, cuenta: e.target.value });
+                    const sugerida = empresaManual ? "" : empresaDeCuenta(e.target.value);
+                    setForm({ ...form, cuenta: e.target.value, ...(sugerida ? { empresa: sugerida } : {}) });
                   }
                 }}
               >
@@ -687,6 +774,18 @@ export default function Payouts({ session }) {
               )}
             </div>
 
+            <div className="po-field">
+              <label htmlFor="po-empresa">Empresa</label>
+              <select
+                id="po-empresa"
+                value={form.empresa}
+                onChange={(e) => { setEmpresaManual(true); setForm({ ...form, empresa: e.target.value }); }}
+              >
+                <option value="" disabled>Elige la empresa…</option>
+                {empresas.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </div>
+
             <div className="po-fila2">
               <div className="po-field">
                 <label htmlFor="po-importe">Importe recibido (€)</label>
@@ -694,7 +793,7 @@ export default function Payouts({ session }) {
                   id="po-importe"
                   type="number"
                   step="0.01"
-                  min="0"
+                  min="0.01"
                   inputMode="decimal"
                   className="po-mono"
                   value={form.importe}
@@ -703,10 +802,27 @@ export default function Payouts({ session }) {
                 />
               </div>
               <div className="po-field">
-                <label htmlFor="po-fecha">Fecha</label>
-                <input id="po-fecha" type="date" className="po-mono" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+                <label htmlFor="po-importe-usd">Importe en $ <span style={{ opacity: 0.6 }}>(opcional)</span></label>
+                <input
+                  id="po-importe-usd"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  className="po-mono"
+                  value={form.importeUsd}
+                  onChange={(e) => setForm({ ...form, importeUsd: e.target.value })}
+                  placeholder="0,00"
+                />
               </div>
             </div>
+
+            <div className="po-field">
+              <label htmlFor="po-fecha">Fecha</label>
+              <input id="po-fecha" type="date" className="po-mono" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+            </div>
+
+            <div className="po-nota">Se guarda también como retiro: aparecerá en Contabilidad y en Cuentas activas.</div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
               <button className="po-btn" onClick={cerrarForm} disabled={guardando}>Cancelar</button>

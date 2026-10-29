@@ -31,7 +31,7 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 - `Objetivos.jsx` — periodic goals (`objetivos`, weekly/monthly/quarterly/annual) cross-referenced against `trades`.
 - `Informes.jsx` — aggregated reports/charts (via `recharts`) over `trades` and `estrategia_registros`.
 - `Contabilidad.jsx` — per-firm accounting: purchased accounts (`cuentas_compradas`), withdrawals (`retiros`), tax-deductible investments (`inversiones_desgravables`).
-- `Payouts.jsx` — payout screenshots wall (`payouts` table: cuenta, importe_eur, fecha, imagen_path) with images in the private `payout-images` bucket (folder per `user_id`, signed URLs, client-side WebP compression). Schema in `sql/payouts_schema.sql`.
+- `Payouts.jsx` — wall of payout screenshots. A payout **is a `retiros` row** (the same table Contabilidad and Cuentas activas use: fecha, cuenta, proveedor, `monto` €, `monto_usd` $), so anything entered in any of the three places shows up in the others; the `payouts` table only holds the optional screenshot (`retiro_id` → `retiros`, `imagen_path`). Images live in the private `payout-images` bucket (folder per `user_id`, signed URLs, client-side WebP compression). Schema in `sql/payouts_schema.sql` + `sql/payouts_retiros_migration.sql`.
 
 **`supabaseClient.js`** creates the Supabase client from the env vars above and exports `conReintento()`, a small retry wrapper used on queries fired right after session load — it works around a real race where the very first query can fail because the restored session's token is still refreshing.
 
