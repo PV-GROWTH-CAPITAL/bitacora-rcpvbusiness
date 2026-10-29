@@ -31,6 +31,7 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 - `Objetivos.jsx` — periodic goals (`objetivos`, weekly/monthly/quarterly/annual) cross-referenced against `trades`.
 - `Informes.jsx` — aggregated reports/charts (via `recharts`) over `trades` and `estrategia_registros`.
 - `Contabilidad.jsx` — per-firm accounting: purchased accounts (`cuentas_compradas`), withdrawals (`retiros`), tax-deductible investments (`inversiones_desgravables`).
+- `Payouts.jsx` — payout screenshots wall (`payouts` table: cuenta, importe_eur, fecha, imagen_path) with images in the private `payout-images` bucket (folder per `user_id`, signed URLs, client-side WebP compression). Schema in `sql/payouts_schema.sql`.
 
 **`supabaseClient.js`** creates the Supabase client from the env vars above and exports `conReintento()`, a small retry wrapper used on queries fired right after session load — it works around a real race where the very first query can fail because the restored session's token is still refreshing.
 
@@ -39,3 +40,10 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 **Styling:** no CSS framework. Every component defines its look as inline style objects plus an injected `<style>` block for hover/responsive rules, using a shared dark palette and Google Fonts (`Fraunces`, `IBM Plex Sans`/`Mono`, `Space Grotesk`) pulled in via `@import`.
 
 **Deployment:** Netlify, configured in `netlify.toml` — `npm run build`, publish `dist/`, SPA fallback (`/* → /index.html`), plus baseline security headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`).
+
+## Imagen "Operativa Trading"
+- Botón "Imagen operativa" en `TradingJournal.jsx`. Solo aparece con un único día filtrado. El diseño está en `src/OperativaImagen.jsx`.
+- La lógica de cálculo está en `src/utils/operativa.js` y la comparten la web y el script de `PLANTILLAS/operativa-img/generar.js` (`~/Desktop/RCPV BUSINESS/PLANTILLAS/operativa-img`). Si la cambias, comprueba que el script sigue funcionando.
+- Modos: "porcentaje" (por defecto; % de cada cuenta sobre su propio tamaño, total = suma de los %) y "dolares" (resultado en $ por cuenta, total = suma de los $). No existe modo capital.
+- Paleta de marca: navy #0B132B/#0D1B2A, dorado #D4AF37/#C5A059, blanco cálido #F8F9FA/#E0E1DD. Fuentes: Cinzel + Montserrat.
+- Cambios grandes: siempre en una rama con PR en borrador para ver el deploy preview de Netlify antes de fusionar.
