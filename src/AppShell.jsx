@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark } from "lucide-react";
+import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import TradingJournal from "./TradingJournal";
 import Contabilidad from "./Contabilidad";
@@ -7,9 +7,10 @@ import EstrategiaTrading from "./EstrategiaTrading";
 import Informes from "./Informes";
 import Objetivos from "./Objetivos";
 import CuentasActivas from "./CuentasActivas";
+import Payouts from "./Payouts";
 
 export default function AppShell({ session, onLogout }) {
-  const [page, setPage] = useState("journal"); // "journal" | "estrategia" | "informes" | "objetivos" | "contabilidad"
+  const [page, setPage] = useState("journal"); // "journal" | "estrategia" | "cuentas-activas" | "informes" | "objetivos" | "contabilidad" | "payouts"
   const [analisisOpen, setAnalisisOpen] = useState(true);
   const [contabilidadOpen, setContabilidadOpen] = useState(false);
   const [contabilidadEmpresa, setContabilidadEmpresa] = useState("GENERAL");
@@ -311,6 +312,9 @@ export default function AppShell({ session, onLogout }) {
               ))}
             </div>
           )}
+          <button className={`shell-nav-btn ${page === "payouts" ? "active" : ""}`} onClick={() => irASimple("payouts")} title="Payouts">
+            <HandCoins size={16} /> <span className="nav-label">Payouts</span>
+          </button>
         </nav>
         <div className="shell-user">
           {!collapsed && <span className="shell-user-email" title={session.user.email}>{session.user.email}</span>}
@@ -339,6 +343,8 @@ export default function AppShell({ session, onLogout }) {
           <Informes session={session} />
         ) : page === "objetivos" ? (
           <Objetivos session={session} />
+        ) : page === "payouts" ? (
+          <Payouts session={session} />
         ) : (
           <Contabilidad session={session} activeTab={contabilidadEmpresa} onActiveTabChange={setContabilidadEmpresa} />
         )}
