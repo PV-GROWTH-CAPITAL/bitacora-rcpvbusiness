@@ -361,7 +361,7 @@ export default function EstrategiaEstadisticas() {
                       <label className="est-check-label">
                         <input type="checkbox" checked={c.cumplido} onChange={() => toggleCheck(i)} />
                         <span>{c.texto}</span>
-                        {fila?.created_at && <span className="est-check-hora">{fmtHora(fila.created_at)}</span>}
+                        {(fila?.marcado_at || fila?.created_at) && <span className="est-check-hora">{fmtHora(fila.marcado_at || fila.created_at)}</span>}
                       </label>
                       {fila?.comentario && <div className="est-detalle-comentario">{fila.comentario}</div>}
                     </div>

@@ -106,7 +106,7 @@ export function checksDeRegistro(registro, filas = []) {
       cumplido: !!c.cumplido,
       comentario: fila?.comentario || "",
       capturaPath: fila?.captura_path || null,
-      hora: fila?.created_at || null,
+      hora: fila?.marcado_at || fila?.created_at || null,
     };
   });
   // Checks cuyo criterio ya no está en la copia (p. ej. criterio borrado después).
@@ -119,7 +119,7 @@ export function checksDeRegistro(registro, filas = []) {
         cumplido: !!f.cumplido,
         comentario: f.comentario || "",
         capturaPath: f.captura_path || null,
-        hora: f.created_at,
+        hora: f.marcado_at || f.created_at,
       })
     );
   return lista;

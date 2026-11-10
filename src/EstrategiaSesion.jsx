@@ -288,6 +288,7 @@ export default function EstrategiaSesion({ session, sesion }) {
         comentario: f.comentario || "",
         captura_path: f.captura_path || null,
         created_at: f.created_at,
+        marcado_at: f.marcado_at || null,
       };
       borradores[f.criterio_id] = f.comentario || "";
     });
@@ -360,6 +361,7 @@ export default function EstrategiaSesion({ session, sesion }) {
             comentario: fila.comentario ? fila.comentario : null,
             captura_path: fila.captura_path || null,
             user_id: session.user.id,
+            ...("marcado_at" in cambios ? { marcado_at: cambios.marcado_at } : {}),
           },
           { onConflict: "registro_id,criterio_id" }
         )
@@ -378,7 +380,8 @@ export default function EstrategiaSesion({ session, sesion }) {
   function toggleCheck(c) {
     setActivoId(c.id);
     setAviso("");
-    guardarCheck(c, { cumplido: !estadoRef.current[c.id]?.cumplido });
+    const marcar = !estadoRef.current[c.id]?.cumplido;
+    guardarCheck(c, { cumplido: marcar, marcado_at: marcar ? new Date().toISOString() : null });
   }
 
   function guardarComentario(c) {
@@ -704,8 +707,8 @@ export default function EstrategiaSesion({ session, sesion }) {
                           <span className="est-check-sync">{st.subiendo ? "Subiendo…" : "Guardando…"}</span>
                         ) : st.fallo ? (
                           <span className="est-check-fallo">No se guardó</span>
-                        ) : st.created_at ? (
-                          <span className="est-check-hora" title="Hora en que se registró">{fmtHora(st.created_at)}</span>
+                        ) : st.cumplido && (st.marcado_at || st.created_at) ? (
+                          <span className="est-check-hora" title="Hora en que se marcó">{fmtHora(st.marcado_at || st.created_at)}</span>
                         ) : null}
                         {st.captura_path && (
                           <button
