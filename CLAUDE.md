@@ -47,3 +47,14 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 - Modos: "porcentaje" (por defecto; % de cada cuenta sobre su propio tamaño, total = suma de los %) y "dolares" (resultado en $ por cuenta, total = suma de los $). No existe modo capital.
 - Paleta de marca: navy #0B132B/#0D1B2A, dorado #D4AF37/#C5A059, blanco cálido #F8F9FA/#E0E1DD. Fuentes: Cinzel + Montserrat.
 - Cambios grandes: siempre en una rama con PR en borrador para ver el deploy preview de Netlify antes de fusionar.
+
+## Producto multiusuario
+- La Bitácora va a abrirse a usuarios externos. Un solo proyecto de Supabase para todos; el aislamiento es por fila con RLS y auth.uid().
+- Toda tabla nueva lleva user_id, RLS activado y las cuatro políticas (select, insert, update, delete) limitadas a auth.uid() = user_id.
+- Storage: buckets privados, carpeta raíz = user_id, imágenes con URLs firmadas. El modelo a copiar es src/Payouts.jsx. Nunca getPublicUrl para contenido de usuario.
+- Nada escrito a fuego para un usuario concreto: ni correos, ni listas de firmas, ni instrumentos. Lo configurable se guarda por usuario.
+- Sin Edge Functions salvo que no haya alternativa: preferimos funciones SQL (RPC) que René pega en el SQL Editor.
+- Cada cambio de base de datos va en un archivo nuevo en sql/ y viene con su script de vuelta atrás en sql/rollback/. René los pega a mano, primero en el proyecto de pruebas y luego en producción.
+- Cambios de más de un archivo: rama nueva y PR en borrador, para probar en el deploy preview de Netlify antes de fusionar.
+- No añadir dependencias sin preguntar antes.
+- Los textos de la interfaz, en español de España.
