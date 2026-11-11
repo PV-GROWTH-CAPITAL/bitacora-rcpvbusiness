@@ -72,7 +72,8 @@ function HistorialPanel({ titulo, registros, vacio, onEditar, onBorrar, checksPo
 export default function EstrategiaEstadisticas() {
   const [registros, setRegistros] = useState([]);
   const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState(false); // false | true | texto del error de Supabase
+  const mensajeError = (e) => (e && typeof e === "object" && e.message) || true;
   const [hoy, setHoy] = useState(todayIsoLocal);
   const [mesesAbiertos, setMesesAbiertos] = useState(() => ({ ...mesesAbiertosMemo }));
 
@@ -101,7 +102,7 @@ export default function EstrategiaEstadisticas() {
     ]);
     if (err || errChecks) {
       console.error(err || errChecks);
-      setError(true);
+      setError(mensajeError(err || errChecks));
     } else {
       setRegistros(data || []);
       setChecksFilas(filas || []);
@@ -204,7 +205,7 @@ export default function EstrategiaEstadisticas() {
     if (error || !data?.length) {
       setBusy(false);
       console.error(error || "Update sin filas afectadas: revisa las políticas RLS de estrategia_registros");
-      setError(true);
+      setError(mensajeError(error));
       return;
     }
     // Si el registro tiene checks en directo, su "cumplido" se mantiene igual que en la copia.
@@ -219,7 +220,7 @@ export default function EstrategiaEstadisticas() {
     const fallo = resultados.find((r) => r.error);
     if (fallo) {
       console.error(fallo.error);
-      setError(true);
+      setError(mensajeError(fallo.error));
     }
     setEditando(null);
     cargar();
@@ -232,7 +233,7 @@ export default function EstrategiaEstadisticas() {
     const { data, error } = await supabase.from(REGISTROS_TABLE).delete().eq("id", r.id).select("id");
     if (error || !data?.length) {
       console.error(error || "Delete sin filas afectadas: revisa las políticas RLS de estrategia_registros");
-      setError(true);
+      setError(mensajeError(error));
       return;
     }
     await borrarCapturasRegistro(r.user_id, r.id);
@@ -245,6 +246,7 @@ export default function EstrategiaEstadisticas() {
     <>
       {error && (
         <div className="est-error-banner">
+          {typeof error === "string" && <strong>Error de Supabase: {error}. </strong>}
           No se pudo guardar/leer el último cambio. Revisa tu conexión, o que las tablas "estrategia_registros" y
           "estrategia_checks" y sus permisos estén bien configurados en Supabase.
         </div>

@@ -34,7 +34,8 @@ export default function EstrategiaSesion({ session, sesion }) {
   const [registros, setRegistros] = useState([]);
   const [reglaOro, setReglaOro] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState(false); // false | true | texto del error de Supabase
+  const mensajeError = (e) => (e && typeof e === "object" && e.message) || true;
 
   // Sesión en curso (registro en_curso de hoy)
   const [registro, setRegistro] = useState(null); // { id, fecha, instrumento, notas }
@@ -81,7 +82,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     ]);
     if (err1 || err2 || err3) {
       console.error(err1 || err2 || err3);
-      setError(true);
+      setError(mensajeError(err1 || err2 || err3));
       setLoaded(true);
       return;
     }
@@ -166,7 +167,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     if (error) {
       console.error(error);
       setReglaOro(anterior);
-      setError(true);
+      setError(mensajeError(error));
     }
   }
 
@@ -182,7 +183,7 @@ export default function EstrategiaSesion({ session, sesion }) {
       .insert({ texto, orden: maxOrden + 1, sesion, user_id: session.user.id });
     if (error) {
       console.error(error);
-      setError(true);
+      setError(mensajeError(error));
       return;
     }
     setNuevoTexto("");
@@ -206,7 +207,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     setEditTexto("");
     if (error) {
       console.error(error);
-      setError(true);
+      setError(mensajeError(error));
       return;
     }
     cargar();
@@ -218,7 +219,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     const { error } = await supabase.from(CRITERIOS_TABLE).delete().eq("id", id);
     if (error) {
       console.error(error);
-      setError(true);
+      setError(mensajeError(error));
       return;
     }
     cargar();
@@ -236,7 +237,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     ]);
     if (e1 || e2) {
       console.error(e1 || e2);
-      setError(true);
+      setError(mensajeError(e1 || e2));
       return;
     }
     cargar();
@@ -248,7 +249,7 @@ export default function EstrategiaSesion({ session, sesion }) {
   function enCola(tarea) {
     const siguiente = colaRef.current.then(tarea).catch((e) => {
       console.error(e);
-      setError(true);
+      setError(mensajeError(e));
     });
     colaRef.current = siguiente;
     return siguiente;
@@ -276,7 +277,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     const { data, error } = await conReintento(() => supabase.from(CHECKS_TABLE).select("*").eq("registro_id", r.id));
     if (error) {
       console.error(error);
-      setError(true);
+      setError(mensajeError(error));
       return;
     }
     const inicial = {};
@@ -315,7 +316,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     setBusy(false);
     if (error) {
       console.error(error);
-      setError(true);
+      setError(mensajeError(error));
       return;
     }
     reiniciarEstado({});
@@ -404,7 +405,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     } catch (e) {
       console.error(e);
       parchearCheck(c.id, { subiendo: false, fallo: true });
-      setError(true);
+      setError(mensajeError(e));
       return;
     }
     const anterior = estadoRef.current[c.id]?.captura_path || null;
@@ -485,7 +486,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     const { data, error } = await supabase.from(REGISTROS_TABLE).delete().eq("id", id).select("id");
     if (error || !data?.length) {
       console.error(error || "Delete sin filas afectadas: revisa las políticas RLS de estrategia_registros");
-      setError(true);
+      setError(mensajeError(error));
       return false;
     }
     await borrarCapturasRegistro(session.user.id, id);
@@ -513,7 +514,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     setBusy(false);
     if (error) {
       console.error(error);
-      setError(true);
+      setError(mensajeError(error));
       return;
     }
     setPendiente(null);
@@ -558,6 +559,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     <>
       {error && (
         <div className="est-error-banner">
+          {typeof error === "string" && <strong>Error de Supabase: {error}. </strong>}
           No se pudo guardar/leer el último cambio. Revisa tu conexión, o que las tablas "estrategia_criterios",
           "estrategia_registros", "estrategia_checks" y "estrategia_sesiones" y sus permisos estén bien configurados en Supabase.
         </div>
