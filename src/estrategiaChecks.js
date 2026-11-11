@@ -49,12 +49,6 @@ export async function subirCaptura({ userId, registroId, criterioId, blob }) {
   return path;
 }
 
-// El bucket es público (igual que las capturas del Journal).
-export function urlCaptura(path) {
-  if (!path) return null;
-  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-}
-
 // No bloquea el flujo si falla: como mucho queda un archivo huérfano.
 export async function borrarCaptura(path) {
   if (!path) return;

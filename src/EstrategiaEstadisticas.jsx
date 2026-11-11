@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Pencil, Trash2, X, ChevronDown } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import { SESION_NOMBRES, fmtFechaLarga, todayIsoLocal, calcularStats, StatCards, DetalleChecks, VisorCaptura } from "./estrategiaComun";
-import { CHECKS_TABLE, checksDeRegistro, borrarCapturasRegistro, urlCaptura, fmtHora } from "./estrategiaChecks";
+import { CHECKS_TABLE, checksDeRegistro, borrarCapturasRegistro, fmtHora } from "./estrategiaChecks";
+import { CapturaImg } from "./capturasUrls";
 
 const REGISTROS_TABLE = "estrategia_registros";
 const MESES = [
@@ -373,7 +374,7 @@ export default function EstrategiaEstadisticas() {
                         onClick={() => ampliar(fila.captura_path, c.texto)}
                         aria-label={`Ampliar captura de ${c.texto}`}
                       >
-                        <img src={urlCaptura(fila.captura_path)} alt="" />
+                        <CapturaImg origen={fila.captura_path} alt="" />
                       </button>
                     )}
                   </div>

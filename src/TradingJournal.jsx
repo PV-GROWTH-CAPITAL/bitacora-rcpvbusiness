@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import OperativaImagen from "./OperativaImagen";
+import { rutaDeCaptura, useUrlCaptura } from "./capturasUrls";
 
 const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const TABLE = "trades";
@@ -133,6 +134,17 @@ const emptyForm = {
   captura_url: "",
 };
 
+// Miniatura de la captura de un trade, con enlace para abrirla. `valor` es trades.captura_url:
+// la URL pública antigua o, en las capturas nuevas, solo la ruta dentro del bucket.
+function CapturaTrade({ valor }) {
+  const url = useUrlCaptura(valor);
+  return (
+    <a href={url || undefined} target="_blank" rel="noopener noreferrer" className="jt-captura-thumb-link">
+      <img src={url || undefined} alt="Captura de la operación" className="jt-captura-thumb" />
+    </a>
+  );
+}
+
 export default function TradingJournal({ session }) {
   const [trades, setTrades] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -145,6 +157,10 @@ export default function TradingJournal({ session }) {
   const [form, setForm] = useState(emptyForm);
   const [capturaFile, setCapturaFile] = useState(null);
   const [capturaPreview, setCapturaPreview] = useState(null);
+  // Vista previa del formulario: con un archivo recién elegido se usa su blob: (el hook recibe null);
+  // si no, la URL firmada de la captura ya guardada.
+  const urlCapturaGuardada = useUrlCaptura(capturaFile ? null : capturaPreview);
+  const srcVistaPrevia = capturaFile ? capturaPreview : urlCapturaGuardada;
   const [subiendoCaptura, setSubiendoCaptura] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [calDate, setCalDate] = useState(() => new Date());
@@ -523,18 +539,12 @@ export default function TradingJournal({ session }) {
     setForm((f) => ({ ...f, captura_url: "" }));
   }
 
-  function pathDeCaptura(url) {
-    if (!url) return null;
-    const marca = "/capturas/";
-    const i = url.indexOf(marca);
-    return i === -1 ? null : url.slice(i + marca.length);
-  }
-
-  async function borrarCapturaStorage(url, idExcluido) {
-    // Un trade registrado en varias cuentas comparte captura: solo se borra si ya nadie más la usa.
-    if (trades.some((t) => t.id !== idExcluido && t.captura_url === url)) return;
-    const path = pathDeCaptura(url);
+  // `valor` es lo guardado en captura_url: URL pública antigua o ruta. Se compara y se borra por ruta.
+  async function borrarCapturaStorage(valor, idExcluido) {
+    const path = rutaDeCaptura(valor);
     if (!path) return;
+    // Un trade registrado en varias cuentas comparte captura: solo se borra si ya nadie más la usa.
+    if (trades.some((t) => t.id !== idExcluido && rutaDeCaptura(t.captura_url) === path)) return;
     try {
       await supabase.storage.from("capturas").remove([path]);
     } catch (e) {
@@ -616,8 +626,8 @@ export default function TradingJournal({ session }) {
         mostrarFallo(uploadError, true);
         return;
       }
-      const { data: pub } = supabase.storage.from("capturas").getPublicUrl(path);
-      capturaUrlFinal = pub.publicUrl;
+      // Se guarda solo la ruta: la imagen se enseña con una URL firmada (ver capturasUrls.js).
+      capturaUrlFinal = path;
     }
 
     const registro = {
@@ -661,7 +671,7 @@ export default function TradingJournal({ session }) {
         return;
       }
     }
-    if (urlAnterior && urlAnterior !== capturaUrlFinal) {
+    if (urlAnterior && rutaDeCaptura(urlAnterior) !== rutaDeCaptura(capturaUrlFinal)) {
       borrarCapturaStorage(urlAnterior, editingId);
     }
     await cargarTrades();
@@ -1554,9 +1564,7 @@ export default function TradingJournal({ session }) {
                             </div>
                             {t.notas && <div style={{ marginBottom: 6 }}>{t.notas}</div>}
                             {t.captura_url && (
-                              <a href={t.captura_url} target="_blank" rel="noopener noreferrer" className="jt-captura-thumb-link">
-                                <img src={t.captura_url} alt="Captura de la operación" className="jt-captura-thumb" />
-                              </a>
+                              <CapturaTrade valor={t.captura_url} />
                             )}
                             {t.enlace && (
                               <a href={t.enlace} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", display: "block", marginTop: t.captura_url ? 8 : 0 }}>
@@ -1734,7 +1742,7 @@ export default function TradingJournal({ session }) {
               <label>Captura de la operación (opcional)</label>
               {capturaPreview ? (
                 <div className="jt-captura-preview">
-                  <img src={capturaPreview} alt="Vista previa de la captura" />
+                  <img src={srcVistaPrevia || undefined} alt="Vista previa de la captura" />
                   <button type="button" className="jt-btn" onClick={quitarCaptura}>
                     <X size={14} /> Quitar imagen
                   </button>
