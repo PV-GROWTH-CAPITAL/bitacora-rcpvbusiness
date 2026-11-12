@@ -31,10 +31,14 @@ const OBLIGATORIAS = [
   "soldTimestamp",
 ];
 
-export const avisosFijos = [
-  "Fechas y horas se importan tal como están en el archivo, sin convertir la zona horaria.",
-  "El P&L es el que da Tradovate. No consta que incluya comisiones: no se descuenta nada.",
-];
+export const avisoPnl = "El P&L es el que da Tradovate. No consta que incluya comisiones: no se descuenta nada.";
+export const avisoPnlNeto = avisoPnl;
+// El archivo no trae desfase horario: para convertir la hora hay que elegir su zona.
+export const usaOffsetDelArchivo = false;
+
+export function tieneComisiones() {
+  return false;
+}
 
 export function detecta(cabeceras) {
   return faltantes(cabeceras, ["symbol", "boughtTimestamp", "soldTimestamp"]).length === 0;
@@ -176,6 +180,7 @@ export function parse(texto) {
       origen_id: claveOrigen(buyIds, sellIds),
       fecha: entrada.fecha,
       hora_entrada: entrada.hora,
+      fecha_salida: salida.fecha,
       hora_salida: salida.hora,
       instrumento: instrumentoDe(grupo[0].symbol),
       direccion,

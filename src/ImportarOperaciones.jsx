@@ -3,11 +3,13 @@ import { X, Upload, AlertTriangle, Check } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import {
   FORMATOS,
+  ZONAS_ORIGEN,
   LIMITE_BYTES,
   TAMANO_LOTE,
   detectarFormato,
   formatoPorId,
   procesar,
+  opcionesDeArchivo,
   filaDeTrade,
   trocearClaves,
 } from "./importar/index.js";
@@ -19,6 +21,30 @@ import {
 // Se pinta dentro de .jt-root (TradingJournal.jsx) y reutiliza sus clases.
 
 const MAX_FILAS_VISTA = 500;
+
+// Preferencias recordadas en este navegador (si el almacenamiento falla, se usan las de por defecto).
+const CLAVE_HORAS = "bitacora.importar.horas";
+const CLAVE_ZONA = "bitacora.importar.zona";
+const ZONA_POR_DEFECTO = "Europe/Madrid";
+
+function leerPreferencia(clave, valida, porDefecto) {
+  try {
+    const v = window.localStorage.getItem(clave);
+    return v !== null && valida(v) ? v : porDefecto;
+  } catch {
+    return porDefecto;
+  }
+}
+
+function guardarPreferencia(clave, valor) {
+  try {
+    window.localStorage.setItem(clave, valor);
+  } catch {
+    // Sin almacenamiento (modo privado, bloqueado): no se recuerda, sin más.
+  }
+}
+
+const sumaCentimos = (ops, campo) => ops.reduce((s, o) => s + Math.round((Number(o[campo]) || 0) * 100), 0) / 100;
 
 function fmtMoney(n) {
   const v = Number(n) || 0;
@@ -65,13 +91,22 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
   const [lectura, setLectura] = useState(null); // { operaciones, avisos, filasIgnoradas }
   const [yaImportadas, setYaImportadas] = useState(() => new Set());
   const [resultado, setResultado] = useState(null); // { guardadas, total, error, lote, lotes }
+  const [descontarComisiones, setDescontarComisiones] = useState(true);
+  const [horas, setHoras] = useState(() => leerPreferencia(CLAVE_HORAS, (v) => v === "archivo" || v === "ny", "archivo"));
+  const [zonaOrigen, setZonaOrigen] = useState(() => leerPreferencia(CLAVE_ZONA, (v) => ZONAS_ORIGEN.includes(v), ZONA_POR_DEFECTO));
 
   const nuevas = useMemo(
     () => (lectura ? lectura.operaciones.filter((o) => !yaImportadas.has(o.origen_id)) : []),
     [lectura, yaImportadas]
   );
-  const totalNuevas = useMemo(() => nuevas.reduce((s, o) => s + o.resultado, 0), [nuevas]);
+  const totalNuevas = useMemo(() => sumaCentimos(nuevas, "resultado"), [nuevas]);
+  const brutoNuevas = useMemo(() => sumaCentimos(nuevas, "resultado_bruto"), [nuevas]);
   const formato = formatoPorId(formatoId);
+  const admite = useMemo(
+    () => (texto !== null && formatoId ? opcionesDeArchivo(texto, formatoId) : { comisiones: false, offsetEnArchivo: false }),
+    [texto, formatoId]
+  );
+  const convertir = horas === "ny";
 
   function cerrar() {
     if (ocupado) return;
@@ -108,7 +143,11 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
   async function verVistaPrevia() {
     if (ocupado || texto === null) return;
     setError("");
-    const res = procesar(texto, formatoId);
+    const res = procesar(texto, formatoId, {
+      descontarComisiones: admite.comisiones && descontarComisiones,
+      convertirHoras: convertir,
+      zonaOrigen,
+    });
     if (res.error) {
       setError(res.error);
       return;
@@ -181,6 +220,8 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
         .ji-pasos span.on { color: var(--accent); }
         .ji-nota { font-size: 12px; color: var(--text-dim); line-height: 1.5; margin: 2px 0 12px; }
         .ji-archivo { font-size: 12px; color: var(--text-dim); margin-top: 2px; word-break: break-all; }
+        .ji-check { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 0 0 12px; cursor: pointer; }
+        .ji-check input { width: auto; margin: 0; }
         .ji-archivo b { color: var(--text); font-weight: 500; }
         .ji-resumen { display: flex; gap: 8px 18px; flex-wrap: wrap; align-items: baseline; font-size: 13px; margin-bottom: 10px; }
         .ji-resumen b { font-weight: 600; }
@@ -251,6 +292,49 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
                 )}
               </div>
             </div>
+            {admite.comisiones && (
+              <label className="ji-check">
+                <input
+                  type="checkbox"
+                  checked={descontarComisiones}
+                  onChange={(e) => setDescontarComisiones(e.target.checked)}
+                />
+                <span>Descontar comisiones (Fees + Commissions)</span>
+              </label>
+            )}
+            <div className="jt-field-grid">
+              <div className="jt-field">
+                <label htmlFor="ji-horas">Horas</label>
+                <select
+                  id="ji-horas"
+                  value={horas}
+                  onChange={(e) => { setHoras(e.target.value); guardarPreferencia(CLAVE_HORAS, e.target.value); }}
+                >
+                  <option value="archivo">Tal como están en el archivo</option>
+                  <option value="ny">Convertir a hora de Nueva York (ET)</option>
+                </select>
+              </div>
+              {convertir && formatoId && !admite.offsetEnArchivo && (
+                <div className="jt-field">
+                  <label htmlFor="ji-zona">Zona horaria del archivo</label>
+                  <select
+                    id="ji-zona"
+                    value={zonaOrigen}
+                    onChange={(e) => { setZonaOrigen(e.target.value); guardarPreferencia(CLAVE_ZONA, e.target.value); }}
+                  >
+                    {ZONAS_ORIGEN.map((z) => (
+                      <option key={z} value={z}>{z}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            {convertir && admite.offsetEnArchivo && (
+              <p className="ji-nota">Se usa el desfase horario que trae cada fila del archivo: no hace falta elegir zona.</p>
+            )}
+            {convertir && formatoId && !admite.offsetEnArchivo && (
+              <p className="ji-nota">Elige la zona en la que tienes configurada la plataforma: es la de las horas del archivo.</p>
+            )}
             <p className="ji-nota">
               El archivo no indica a qué cuenta pertenece: todas sus operaciones se guardarán en la cuenta que elijas.
               Se lee en tu navegador y no se sube a ningún sitio. Máximo 2 MB y 5.000 filas.
@@ -276,9 +360,15 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
               <span className="jt-mono" style={{ color: "var(--text-dim)" }}>
                 {formato ? formato.nombre : ""} · cuenta {cuenta.trim()}
               </span>
-              {nuevas.length > 0 && (
+              {nuevas.length > 0 && !lectura.conComisiones && (
                 <span className="jt-mono" style={{ color: totalNuevas >= 0 ? "var(--win)" : "var(--loss)" }}>
                   P&amp;L de las nuevas: {fmtMoney(totalNuevas)}
+                </span>
+              )}
+              {nuevas.length > 0 && lectura.conComisiones && (
+                <span className="jt-mono">
+                  Bruto {fmtMoney(brutoNuevas)} · Comisiones {fmtMoney((Math.round(totalNuevas * 100) - Math.round(brutoNuevas * 100)) / 100)} ·{" "}
+                  <span style={{ color: totalNuevas >= 0 ? "var(--win)" : "var(--loss)" }}>Neto {fmtMoney(totalNuevas)}</span>
                 </span>
               )}
             </div>
@@ -299,6 +389,7 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
                     <th className="num">Entrada</th>
                     <th className="num">Salida</th>
                     <th className="num">P&amp;L</th>
+                    {lectura.conComisiones && <th className="num">P&amp;L neto</th>}
                     <th>Estado</th>
                   </tr>
                 </thead>
@@ -314,9 +405,14 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
                         <td className="jt-mono num">{fmtNum(o.contratos)}</td>
                         <td className="jt-mono num">{fmtPrecio(o.precio_entrada)}</td>
                         <td className="jt-mono num">{fmtPrecio(o.precio_salida)}</td>
-                        <td className="jt-mono num" style={{ color: o.resultado > 0 ? "var(--win)" : o.resultado < 0 ? "var(--loss)" : undefined }}>
-                          {fmtMoney(o.resultado)}
+                        <td className="jt-mono num" style={{ color: o.resultado_bruto > 0 ? "var(--win)" : o.resultado_bruto < 0 ? "var(--loss)" : undefined }}>
+                          {fmtMoney(o.resultado_bruto)}
                         </td>
+                        {lectura.conComisiones && (
+                          <td className="jt-mono num" style={{ color: o.resultado > 0 ? "var(--win)" : o.resultado < 0 ? "var(--loss)" : undefined }}>
+                            {fmtMoney(o.resultado)}
+                          </td>
+                        )}
                         <td><span className={`ji-estado${ya ? "" : " nueva"}`}>{ya ? "Ya importada" : "Nueva"}</span></td>
                       </tr>
                     );
