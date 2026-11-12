@@ -2,9 +2,9 @@
 //   node scripts/probar-importador.js
 // Sale con código 1 si algo falla.
 import { leerCsv } from "../src/importar/csv.js";
-import { instrumentoDe, partirFechaHora } from "../src/importar/comun.js";
+import { instrumentoDe, partirFechaHora, convertirZona, offsetDe } from "../src/importar/comun.js";
 import { parsePnl } from "../src/importar/tradovate.js";
-import { FORMATOS, detectarFormato, procesar, filaDeTrade, trocearClaves, LIMITE_FILAS } from "../src/importar/index.js";
+import { FORMATOS, detectarFormato, procesar, opcionesDeArchivo, filaDeTrade, trocearClaves, LIMITE_FILAS } from "../src/importar/index.js";
 
 let fallos = 0;
 let pruebas = 0;
@@ -187,6 +187,106 @@ const TOPSTEPX = `Id,ContractName,EnteredAt,ExitedAt,EntryPrice,ExitPrice,Fees,P
   const repetida = TOPSTEPX + TOPSTEPX.split("\n")[1] + "\n" + "99,NQZ6,11/12/2026 10:00:00 +01:00,11/12/2026 10:01:00 +01:00,1,2,0,10,1,Lateral,,,\n";
   const rr = procesar(repetida, "topstepx");
   igual([rr.operaciones.length, rr.filasIgnoradas], [4, 2], "TopstepX: Id repetido y tipo desconocido se ignoran");
+}
+
+// ----------------------------------------------------- Comisiones (TopstepX)
+{
+  const neto = procesar(TOPSTEPX, "topstepx", { descontarComisiones: true });
+  igual(neto.operaciones.map((o) => o.comisiones), [18.9, 18.9, 18.9, 18.9], "Comisiones: Fees + Commissions por operación");
+  igual(neto.operaciones.map((o) => o.resultado), [-168.9, -1543.9, -18.9, 3256.1], "Comisiones: netos de cada operación");
+  igual(suma(neto.operaciones), 1524.4, "Comisiones: neto total +1.524,40");
+  igual(neto.operaciones.map((o) => o.resultado_bruto), [-150, -1525, 0, 3275], "Comisiones: el bruto se conserva aparte");
+  igual(neto.operaciones.map((o) => o.puntos), [-1.5, -15.25, 0, 32.75], "Comisiones: los puntos siguen siendo los brutos");
+  igual(neto.conComisiones, true, "Comisiones: se marca que se han descontado");
+  igual(
+    [neto.avisos.includes("P&L neto: se han descontado Fees y Commissions."), neto.avisos.includes("P&L bruto; las comisiones no se descuentan.")],
+    [true, false],
+    "Comisiones: aviso de neto en lugar del de bruto"
+  );
+  igual(neto.operaciones.map((o) => filaDeTrade(o, "C", "u").resultado), [-168.9, -1543.9, -18.9, 3256.1], "Comisiones: se guarda el neto en trades");
+
+  const bruto = procesar(TOPSTEPX, "topstepx", { descontarComisiones: false });
+  igual([suma(bruto.operaciones), bruto.conComisiones], [1600, false], "Comisiones: sin descontar, +1.600,00");
+  igual(opcionesDeArchivo(TOPSTEPX, "topstepx"), { comisiones: true, offsetEnArchivo: true }, "Comisiones: el archivo de ejemplo las trae");
+
+  // Sin las columnas Fees y Commissions: comisiones null y no se descuenta nada
+  const quitar = (texto, columnas) => {
+    const lineas = texto.trimEnd().split("\n").map((l) => l.split(","));
+    const idx = columnas.map((c) => lineas[0].indexOf(c));
+    return lineas.map((l) => l.filter((_, i) => !idx.includes(i)).join(",")).join("\n") + "\n";
+  };
+  const sinCom = quitar(TOPSTEPX, ["Fees", "Commissions"]);
+  const rs = procesar(sinCom, "topstepx", { descontarComisiones: true });
+  igual([rs.error, rs.operaciones.length], [null, 4], "Sin Fees/Commissions: se lee igual");
+  igual(rs.operaciones.map((o) => o.comisiones), [null, null, null, null], "Sin Fees/Commissions: comisiones null");
+  igual([suma(rs.operaciones), rs.conComisiones], [1600, false], "Sin Fees/Commissions: no se descuenta nada");
+  igual(rs.avisos.includes("P&L bruto; las comisiones no se descuentan."), true, "Sin Fees/Commissions: aviso de bruto");
+  igual(opcionesDeArchivo(sinCom, "topstepx").comisiones, false, "Sin Fees/Commissions: no se ofrece el interruptor");
+  igual(procesar(quitar(TOPSTEPX, ["Fees"]), "topstepx", { descontarComisiones: true }).operaciones[0].comisiones, null, "Solo Commissions: comisiones null");
+
+  // Tradovate no trae comisiones: no cambia
+  const tv = procesar(TRADOVATE, "tradovate", { descontarComisiones: true });
+  igual([suma(tv.operaciones), tv.conComisiones, opcionesDeArchivo(TRADOVATE, "tradovate").comisiones], [-861.5, false, false], "Tradovate: no hay comisiones que descontar");
+  igual(tv.avisos.some((a) => /No consta que incluya comisiones/.test(a)), true, "Tradovate: mantiene su aviso de P&L");
+}
+
+// ------------------------------------------------ Zona horaria (Nueva York)
+{
+  const md = (fecha, hora) => convertirZona({ fecha, hora }, { zonaOrigen: "Europe/Madrid" });
+  igual(md("2026-11-09", "17:15:40"), { fecha: "2026-11-09", hora: "11:15:40" }, "Zona: Madrid 09/11 17:15:40 -> NY 11:15:40");
+  igual(md("2026-11-10", "15:33:54"), { fecha: "2026-11-10", hora: "09:33:54" }, "Zona: Madrid 10/11 15:33:54 -> NY 09:33:54");
+  igual(md("2026-11-12", "09:12:16"), { fecha: "2026-11-12", hora: "03:12:16" }, "Zona: Madrid 12/11 09:12:16 -> NY 03:12:16");
+  igual(md("2026-11-12", "00:30:00"), { fecha: "2026-11-11", hora: "18:30:00" }, "Zona: cruza medianoche, 12/11 00:30 -> 11/11 18:30");
+  igual(md("2026-10-28", "15:30:00"), { fecha: "2026-10-28", hora: "10:30:00" }, "Zona: semana de 5 h en otoño (28/10)");
+  igual(md("2026-03-10", "15:30:00"), { fecha: "2026-03-10", hora: "10:30:00" }, "Zona: semana de 5 h en primavera (10/03)");
+  igual(md("2026-07-15", "15:30:00"), { fecha: "2026-07-15", hora: "09:30:00" }, "Zona: verano, 6 h (15/07)");
+  igual(convertirZona({ fecha: "2026-11-12", hora: "09:21:38" }, { offsetMin: 60 }), { fecha: "2026-11-12", hora: "03:21:38" }, "Zona: con desfase +01:00 del archivo");
+  igual(
+    ["11/12/2026 09:21:38 +01:00", "11/12/2026 00:00:00 -06:00", "11/12/2026 09:21:38Z", "11/12/2026 09:21:38"].map(offsetDe),
+    [60, -360, 0, null],
+    "Zona: desfase leído del texto"
+  );
+
+  // Tradovate convertido: mismas operaciones, claves, duraciones y total; horas en NY
+  const base = procesar(TRADOVATE, "tradovate");
+  const ny = procesar(TRADOVATE, "tradovate", { convertirHoras: true, zonaOrigen: "Europe/Madrid" });
+  igual(suma(ny.operaciones), -861.5, "Zona: Tradovate, el total no cambia");
+  igual(ny.operaciones.map((o) => o.origen_id), base.operaciones.map((o) => o.origen_id), "Zona: Tradovate, origen_id no cambia");
+  igual(ny.operaciones.map((o) => o.duracion_seg), base.operaciones.map((o) => o.duracion_seg), "Zona: Tradovate, la duración no cambia");
+  igual(ny.operaciones.map((o) => [o.fecha, o.hora_entrada, o.hora_salida]), [
+    ["2026-11-09", "11:15:40", "11:15:59"],
+    ["2026-11-09", "11:45:32", "11:45:46"],
+    ["2026-11-10", "09:33:54", "09:34:43"],
+    ["2026-11-10", "09:45:35", "09:45:44"],
+    ["2026-11-12", "03:12:16", "03:13:42"],
+  ], "Zona: Tradovate, horas en Nueva York");
+  igual(
+    [ny.avisos.includes("Horas convertidas a hora de Nueva York (ET); la fecha puede cambiar."), ny.avisos.some((a) => /tal como están/.test(a))],
+    [true, false],
+    "Zona: aviso de conversión en lugar del fijo"
+  );
+  // La zona del archivo importa en Tradovate
+  igual(procesar(TRADOVATE, "tradovate", { convertirHoras: true, zonaOrigen: "UTC" }).operaciones[0].hora_entrada, "12:15:40", "Zona: Tradovate desde UTC");
+
+  // TopstepX convertido con su propio desfase (la zona elegida no se usa)
+  const tx = procesar(TOPSTEPX, "topstepx", { convertirHoras: true, zonaOrigen: "UTC" });
+  igual(tx.operaciones.map((o) => [o.fecha, o.hora_entrada, o.hora_salida]), [
+    ["2026-11-12", "03:21:38", "03:25:13"],
+    ["2026-11-12", "03:28:21", "03:31:25"],
+    ["2026-11-12", "03:32:19", "03:35:57"],
+    ["2026-11-12", "03:37:05", "03:41:03"],
+  ], "Zona: TopstepX, horas en Nueva York con el desfase del archivo");
+  igual(suma(tx.operaciones), 1600, "Zona: TopstepX, el bruto no cambia");
+  const txNeto = procesar(TOPSTEPX, "topstepx", { convertirHoras: true, descontarComisiones: true });
+  igual(suma(txNeto.operaciones), 1524.4, "Zona: TopstepX, el neto no cambia");
+  igual(txNeto.operaciones.map((o) => o.origen_id), ["topstepx:3308511337", "topstepx:3308524302", "topstepx:3308531318", "topstepx:3308541388"], "Zona: TopstepX, origen_id no cambia");
+  igual(filaDeTrade(txNeto.operaciones[0], "C", "u").hora_entrada, "03:21:38", "Zona: se guarda la hora convertida en trades");
+
+  // Medianoche en un archivo: la fecha sale de la hora de entrada convertida
+  const noche = `symbol,buyFillId,sellFillId,qty,buyPrice,sellPrice,pnl,boughtTimestamp,soldTimestamp
+NQZ6,1,2,1,100.00,101.00,$20.00,11/12/2026 00:30:00,11/12/2026 00:35:00
+`;
+  igual(procesar(noche, "tradovate", { convertirHoras: true }).operaciones.map((o) => [o.fecha, o.hora_entrada, o.hora_salida]), [["2026-11-11", "18:30:00", "18:35:00"]], "Zona: Tradovate, la fecha cambia al cruzar medianoche");
 }
 
 // ------------------------------------------------------------------- Común

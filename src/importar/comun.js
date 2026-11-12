@@ -32,6 +32,66 @@ export function partirFechaHora(valor) {
   return { fecha, hora, clave: `${fecha} ${hora}` };
 }
 
+// Desfase horario escrito al final de una fecha ("+01:00", "-0600", "Z") -> minutos
+// (60, -360, 0). null si la fecha no trae desfase.
+export function offsetDe(valor) {
+  const m = String(valor ?? "").trim().match(/(?:\s|\d)(?:([+-])(\d{2}):?(\d{2})|(Z))$/);
+  if (!m) return null;
+  if (m[4]) return 0;
+  const min = Number(m[2]) * 60 + Number(m[3]);
+  return m[1] === "-" ? -min : min;
+}
+
+export const AVISO_HORAS_ARCHIVO = "Fechas y horas se importan tal como están en el archivo, sin convertir la zona horaria.";
+export const AVISO_HORAS_NY = "Horas convertidas a hora de Nueva York (ET); la fecha puede cambiar.";
+
+const formateadores = new Map();
+function formateador(zona) {
+  if (!formateadores.has(zona)) {
+    formateadores.set(
+      zona,
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: zona,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    );
+  }
+  return formateadores.get(zona);
+}
+
+// Componentes de pared (en ms como si fueran UTC) de un instante visto en una zona.
+function paredEn(instanteMs, zona) {
+  const p = {};
+  for (const { type, value } of formateador(zona).formatToParts(new Date(instanteMs))) p[type] = value;
+  return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute), Number(p.second));
+}
+
+// Pasa una fecha y hora de pared ({ fecha: "YYYY-MM-DD", hora: "HH:MM:SS" }) a otra zona.
+// Con `offsetMin` (el desfase que trae el archivo, p. ej. 60 para "+01:00") el instante es
+// hora local - offset; si no, se resuelve con las reglas de `zonaOrigen` en esa fecha.
+// Todo con Intl (nada de restar horas fijas: EU y EE. UU. cambian la hora en fechas distintas).
+export function convertirZona({ fecha, hora }, { zonaOrigen, offsetMin } = {}, zonaDestino = "America/New_York") {
+  const [y, mo, d] = fecha.split("-").map(Number);
+  const [h, mi, s] = hora.split(":").map(Number);
+  const pared = Date.UTC(y, mo - 1, d, h, mi, s);
+  let instante;
+  if (offsetMin !== null && offsetMin !== undefined) {
+    instante = pared - offsetMin * 60000;
+  } else {
+    // Dos pasadas: el desfase de la zona se mide en el instante aproximado y se corrige.
+    instante = pared - (paredEn(pared, zonaOrigen) - pared);
+    instante = pared - (paredEn(instante, zonaOrigen) - instante);
+  }
+  const iso = new Date(paredEn(instante, zonaDestino)).toISOString();
+  return { fecha: iso.slice(0, 10), hora: iso.slice(11, 19) };
+}
+
 // Segundos entre dos claves "YYYY-MM-DD HH:MM:SS" (b - a). Aritmética sobre los
 // componentes en UTC para que no intervenga la zona horaria del navegador.
 export function segundosEntre(claveA, claveB) {

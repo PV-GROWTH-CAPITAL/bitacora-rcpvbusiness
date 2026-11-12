@@ -5,6 +5,7 @@ import { leerCsv } from "./csv.js";
 import {
   instrumentoDe,
   partirFechaHora,
+  offsetDe,
   segundosEntre,
   numero,
   redondear,
@@ -19,10 +20,20 @@ export const nombre = "TopstepX (Trades)";
 const OBLIGATORIAS = ["Id", "ContractName", "EnteredAt", "ExitedAt", "EntryPrice", "ExitPrice", "PnL", "Size", "Type"];
 const CABECERAS_ORDERS = ["status", "side", "filledat", "cancelledat"];
 
-export const avisosFijos = [
-  "Fechas y horas se importan tal como están en el archivo, sin convertir la zona horaria.",
-  "P&L bruto; las comisiones no se descuentan.",
-];
+// Fees y Commissions son opcionales: si vienen, cada operación lleva `comisiones` y el
+// importador puede descontarlas (neto = PnL - Fees - Commissions).
+const COMISIONES = ["Fees", "Commissions"];
+
+export const avisoPnl = "P&L bruto; las comisiones no se descuentan.";
+export const avisoPnlNeto = "P&L neto: se han descontado Fees y Commissions.";
+// Cada fila trae su desfase ("+01:00"): para convertir la hora no hace falta elegir zona.
+export const usaOffsetDelArchivo = true;
+
+export function tieneComisiones(cabeceras) {
+  return faltantes(cabeceras, COMISIONES).length === 0;
+}
+
+const centimos = (n) => Math.round(n * 100);
 
 // Exportación de la pestaña Orders: no trae operaciones cerradas, no se puede importar.
 function esOrders(cabeceras) {
@@ -44,6 +55,7 @@ export function parse(texto) {
     return { ...vacio, error: "Este archivo no parece una exportación de la pestaña Trades de TopstepX" };
   }
 
+  const conComisiones = tieneComisiones(cabeceras);
   const operaciones = [];
   const lineasIgnoradas = [];
   const vistos = new Set();
@@ -63,12 +75,19 @@ export function parse(texto) {
       continue;
     }
     vistos.add(idFila);
+    // En céntimos enteros para no arrastrar decimales flotantes (13.9 + 5 = 18.9 exacto).
+    const fees = conComisiones ? numero(f["fees"]) : null;
+    const commissions = conComisiones ? numero(f["commissions"]) : null;
+    const comisiones = fees !== null && commissions !== null ? (centimos(fees) + centimos(commissions)) / 100 : null;
     operaciones.push({
       origen_id: `topstepx:${idFila}`,
       // La fecha es la de EnteredAt, no TradeDay (que va en hora de Chicago y puede caer en otro día).
       fecha: entrada.fecha,
       hora_entrada: entrada.hora,
+      fecha_salida: salida.fecha,
       hora_salida: salida.hora,
+      offset_min: offsetDe(f["enteredat"]),
+      offset_salida_min: offsetDe(f["exitedat"]),
       instrumento: instrumentoDe(contrato),
       direccion,
       contratos: redondear(size, 2),
@@ -76,6 +95,7 @@ export function parse(texto) {
       precio_salida: precioSalida,
       puntos: puntosDe(direccion, precioEntrada, precioSalida),
       resultado: redondear(pnl, 2),
+      comisiones,
       duracion_seg: Math.max(0, segundosEntre(entrada.clave, salida.clave)),
       _orden: entrada.clave,
     });
