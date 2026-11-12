@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
-import { urlCaptura, fmtHora } from "./estrategiaChecks";
+import { fmtHora } from "./estrategiaChecks";
+import { CapturaImg } from "./capturasUrls";
 
 export const SESION_NOMBRES = { london: "LONDON", new_york: "NEW YORK" };
 
@@ -83,7 +84,7 @@ export function VisorCaptura({ path, titulo, onCerrar }) {
       <button className="est-visor-cerrar" onClick={onCerrar} aria-label="Cerrar">
         <X size={18} />
       </button>
-      <img src={urlCaptura(path)} alt={titulo || "Captura"} onClick={(e) => e.stopPropagation()} />
+      <CapturaImg origen={path} alt={titulo || "Captura"} onClick={(e) => e.stopPropagation()} />
       {titulo && <div className="est-visor-titulo">{titulo}</div>}
     </div>
   );
@@ -106,7 +107,7 @@ export function DetalleChecks({ checks, onAmpliar }) {
           </div>
           {c.capturaPath && (
             <button className="est-thumb" onClick={() => onAmpliar(c.capturaPath, c.texto)} aria-label={`Ampliar captura de ${c.texto}`}>
-              <img src={urlCaptura(c.capturaPath)} alt="" loading="lazy" />
+              <CapturaImg origen={c.capturaPath} alt="" loading="lazy" />
             </button>
           )}
         </div>

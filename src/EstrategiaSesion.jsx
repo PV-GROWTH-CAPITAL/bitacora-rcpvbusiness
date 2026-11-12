@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Crown, Play, CheckCircle2, MessageSquare, ImagePlus, X, AlertTriangle } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import { SESION_NOMBRES, fmtFechaLarga, todayIsoLocal, calcularStats, StatCards, VisorCaptura } from "./estrategiaComun";
+import { CapturaImg } from "./capturasUrls";
 import {
   CHECKS_TABLE,
   comprimirCaptura,
   subirCaptura,
-  urlCaptura,
   borrarCaptura,
   borrarCapturasRegistro,
   imagenDelPortapapeles,
@@ -721,7 +721,7 @@ export default function EstrategiaSesion({ session, sesion }) {
                             }}
                             aria-label={`Ampliar captura de ${c.texto}`}
                           >
-                            <img src={urlCaptura(st.captura_path)} alt="" />
+                            <CapturaImg origen={st.captura_path} alt="" />
                           </button>
                         )}
                       </span>
@@ -760,7 +760,7 @@ export default function EstrategiaSesion({ session, sesion }) {
                           {st.captura_path ? (
                             <>
                               <button className="est-thumb" onClick={() => setVisor({ path: st.captura_path, titulo: c.texto })} aria-label="Ampliar captura">
-                                <img src={urlCaptura(st.captura_path)} alt="" />
+                                <CapturaImg origen={st.captura_path} alt="" />
                               </button>
                               <div className="est-check-captura-acciones">
                                 <label className="est-btn est-btn-sm">
