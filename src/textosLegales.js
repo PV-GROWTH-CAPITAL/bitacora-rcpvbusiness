@@ -22,16 +22,16 @@ const ACTUALIZACION = "12 de noviembre de 2026";
 
 const { titular, nif, domicilio, email, marca, servicio } = DATOS_LEGALES;
 
-const domicilioTxt = domicilio
-  ? `domicilio en ${domicilio}`
-  : `domicilio a efectos de notificaciones, que se facilita previa solicitud al correo de contacto`;
+const domicilioFrase = domicilio
+  ? `Su domicilio es ${domicilio}.`
+  : `Su domicilio a efectos de notificaciones se facilita previa solicitud al correo de contacto.`;
 
 const aviso = {
   titulo: "Aviso legal",
   parrafos: [
     {
       titulo: "1. Datos identificativos.",
-      texto: `En cumplimiento del artículo 10 de la Ley 34/2002, de Servicios de la Sociedad de la Información y de Comercio Electrónico (LSSI-CE), se informa de que el titular de este sitio web y del servicio «${servicio}» es ${titular}, con NIF ${nif} y ${domicilioTxt}, que actúa bajo el nombre comercial ${marca} (en adelante, el «Titular»). Correo electrónico de contacto: ${email}.`,
+      texto: `En cumplimiento del artículo 10 de la Ley 34/2002, de Servicios de la Sociedad de la Información y de Comercio Electrónico (LSSI-CE), se informa de que el titular de este sitio web y del servicio «${servicio}» es ${titular}, con NIF ${nif}, que actúa bajo el nombre comercial ${marca} (en adelante, el «Titular»). ${domicilioFrase} Correo electrónico de contacto: ${email}.`,
     },
     {
       titulo: "2. Objeto.",
@@ -77,7 +77,7 @@ const privacidad = {
   parrafos: [
     {
       titulo: "1. Quién es el responsable.",
-      texto: `El responsable del tratamiento de tus datos personales en la ${servicio} es ${titular}, con NIF ${nif} y ${domicilioTxt}, que actúa bajo el nombre comercial ${marca}. Para cualquier cuestión sobre tus datos puedes escribir a ${email}. Esta política se aplica de acuerdo con el Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD).`,
+      texto: `El responsable del tratamiento de tus datos personales en la ${servicio} es ${titular}, con NIF ${nif}, que actúa bajo el nombre comercial ${marca}. ${domicilioFrase} Para cualquier cuestión sobre tus datos puedes escribir a ${email}. Esta política se aplica de acuerdo con el Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD).`,
     },
     {
       titulo: "2. Qué datos tratamos.",
