@@ -6,9 +6,13 @@
 // actualiza aquí el texto que corresponda y la fecha de ACTUALIZACION.
 
 export const DATOS_LEGALES = {
-  titular: "[NOMBRE Y APELLIDOS DEL TITULAR]",
-  nif: "[NIF DEL TITULAR]",
-  domicilio: "[DOMICILIO A EFECTOS DE NOTIFICACIONES]",
+  titular: "René Crespo Campos",
+  // El NIF no está en el repositorio (es público): viene de la variable VITE_TITULAR_NIF de Netlify,
+  // definida solo en producción. En las vistas previas sale el marcador.
+  nif: import.meta.env.VITE_TITULAR_NIF || "[NIF DEL TITULAR]",
+  // Déjalo vacío mientras no quieras publicar una dirección: los textos dicen entonces que se facilita
+  // previa solicitud por correo. Cuando tengas una (apartado de correos, gestoría, domicilio fiscal), ponla aquí.
+  domicilio: "",
   email: "crespocampos622@gmail.com",
   marca: "RCPV Business",
   servicio: "Bitácora",
@@ -18,12 +22,16 @@ const ACTUALIZACION = "12 de noviembre de 2026";
 
 const { titular, nif, domicilio, email, marca, servicio } = DATOS_LEGALES;
 
+const domicilioTxt = domicilio
+  ? `domicilio en ${domicilio}`
+  : `domicilio a efectos de notificaciones, que se facilita previa solicitud al correo de contacto`;
+
 const aviso = {
   titulo: "Aviso legal",
   parrafos: [
     {
       titulo: "1. Datos identificativos.",
-      texto: `En cumplimiento del artículo 10 de la Ley 34/2002, de Servicios de la Sociedad de la Información y de Comercio Electrónico (LSSI-CE), se informa de que el titular de este sitio web y del servicio «${servicio}» es ${titular}, con NIF ${nif} y domicilio en ${domicilio}, que actúa bajo el nombre comercial ${marca} (en adelante, el «Titular»). Correo electrónico de contacto: ${email}.`,
+      texto: `En cumplimiento del artículo 10 de la Ley 34/2002, de Servicios de la Sociedad de la Información y de Comercio Electrónico (LSSI-CE), se informa de que el titular de este sitio web y del servicio «${servicio}» es ${titular}, con NIF ${nif} y ${domicilioTxt}, que actúa bajo el nombre comercial ${marca} (en adelante, el «Titular»). Correo electrónico de contacto: ${email}.`,
     },
     {
       titulo: "2. Objeto.",
@@ -69,7 +77,7 @@ const privacidad = {
   parrafos: [
     {
       titulo: "1. Quién es el responsable.",
-      texto: `El responsable del tratamiento de tus datos personales en la ${servicio} es ${titular}, con NIF ${nif} y domicilio en ${domicilio}, que actúa bajo el nombre comercial ${marca}. Para cualquier cuestión sobre tus datos puedes escribir a ${email}. Esta política se aplica de acuerdo con el Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD).`,
+      texto: `El responsable del tratamiento de tus datos personales en la ${servicio} es ${titular}, con NIF ${nif} y ${domicilioTxt}, que actúa bajo el nombre comercial ${marca}. Para cualquier cuestión sobre tus datos puedes escribir a ${email}. Esta política se aplica de acuerdo con el Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD).`,
     },
     {
       titulo: "2. Qué datos tratamos.",
