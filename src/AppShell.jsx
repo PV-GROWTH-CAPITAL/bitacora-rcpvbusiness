@@ -1,6 +1,9 @@
 import React, { useState } from "react";
-import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins } from "lucide-react";
+import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { descargarMisDatos, borrarCuenta } from "./misDatos";
+
+const PALABRA_ELIMINAR = "ELIMINAR";
 import TradingJournal from "./TradingJournal";
 import Contabilidad from "./Contabilidad";
 import EstrategiaTrading from "./EstrategiaTrading";
@@ -21,6 +24,13 @@ export default function AppShell({ session, onLogout }) {
   const [newPass2, setNewPass2] = useState("");
   const [passwordMsg, setPasswordMsg] = useState({ type: "", text: "" });
   const [passwordBusy, setPasswordBusy] = useState(false);
+  const [descargando, setDescargando] = useState(false);
+  const [descargaError, setDescargaError] = useState("");
+  const [showEliminarModal, setShowEliminarModal] = useState(false);
+  const [eliminarPass, setEliminarPass] = useState("");
+  const [eliminarPalabra, setEliminarPalabra] = useState("");
+  const [eliminarError, setEliminarError] = useState("");
+  const [eliminando, setEliminando] = useState(false);
 
   const CONTABILIDAD_EMPRESAS = ["MY FUNDED FUTURES", "APEX", "LUCID TRADING", "TOPSTEP", "FUNDING PIPS", "FUNDED NEXT", "ALPHA CAPITAL", "TRADEIFY", "FTMO", "5ERS", "NYS MARKETS"];
 
@@ -80,6 +90,60 @@ export default function AppShell({ session, onLogout }) {
       setPasswordMsg({ type: "info", text: "Contraseña actualizada correctamente." });
       setNewPass1("");
       setNewPass2("");
+    }
+  }
+
+  async function descargarDatos() {
+    if (descargando) return;
+    setDescargaError("");
+    setDescargando(true);
+    try {
+      await descargarMisDatos(session);
+    } catch (e) {
+      setDescargaError(`No se han podido descargar tus datos. ${e.message || ""}`.trim());
+    } finally {
+      setDescargando(false);
+    }
+  }
+
+  function abrirEliminar() {
+    setEliminarPass("");
+    setEliminarPalabra("");
+    setEliminarError("");
+    setDescargaError("");
+    setShowEliminarModal(true);
+  }
+
+  function cerrarEliminar() {
+    if (eliminando) return;
+    setShowEliminarModal(false);
+    setEliminarPass("");
+    setEliminarPalabra("");
+    setEliminarError("");
+    setDescargaError("");
+  }
+
+  const puedeEliminar = eliminarPass.length > 0 && eliminarPalabra.trim() === PALABRA_ELIMINAR && !eliminando;
+
+  async function eliminarCuenta() {
+    if (!puedeEliminar) return;
+    setEliminarError("");
+    setEliminando(true);
+    try {
+      await borrarCuenta(session, eliminarPass);
+      // Si sale bien, la sesión desaparece y App vuelve a la portada: no hay nada más que pintar aquí.
+    } catch (e) {
+      const detalle = e.message ? ` (${e.message})` : "";
+      if (e.codigo === "PASSWORD_INCORRECTA") {
+        setEliminarError("Contraseña incorrecta");
+      } else if (e.codigo === "PASSWORD_NO_COMPROBADA") {
+        setEliminarError(`No se ha podido comprobar la contraseña. No se ha borrado nada. Vuelve a intentarlo.${detalle}`);
+      } else if (e.codigo === "ARCHIVOS") {
+        setEliminarError(`No se han podido borrar tus archivos, así que tu cuenta no se ha eliminado. Vuelve a intentarlo.${detalle}`);
+      } else {
+        setEliminarError(`No se ha podido eliminar la cuenta. Vuelve a intentarlo.${detalle}`);
+      }
+      setEliminando(false);
     }
   }
 
@@ -170,6 +234,28 @@ export default function AppShell({ session, onLogout }) {
         .shell-btn.primary { background: #C9A23F; color: #16130A; border-color: #C9A23F; font-weight: 600; }
         .shell-msg-error { background: #6E2E26; color: #FBD8D2; font-size: 12.5px; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; }
         .shell-msg-info { background: #2E5F44; color: #D9F2E4; font-size: 12.5px; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; }
+        .shell-user { gap: 4px; }
+        .shell-icon-btn:disabled, .shell-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .shell-icon-btn.danger:hover { color: #FBD8D2; background: #6E2E26; }
+        .shell-btn.danger { background: #B3392B; color: #FFF4F2; border-color: #B3392B; font-weight: 600; }
+        .shell-modal-text { font-size: 13px; line-height: 1.5; color: #C3CCD8; margin: 0 0 12px; }
+        .shell-modal-text strong { color: #E7ECF2; }
+        .shell-descarga {
+          background: #1D2733; border: 1px solid #2A3648; border-radius: 8px; padding: 10px 12px;
+          margin-bottom: 14px; font-size: 12px; line-height: 1.45; color: #8C99AA;
+        }
+        .shell-link-btn {
+          display: inline-flex; align-items: center; gap: 6px; background: none; border: none; padding: 0;
+          margin-bottom: 4px; color: #C9A23F; font-size: 13px; font-weight: 600; font-family: inherit;
+          cursor: pointer; text-align: left;
+        }
+        .shell-link-btn:hover { text-decoration: underline; }
+        .shell-link-btn:disabled { opacity: 0.5; cursor: not-allowed; text-decoration: none; }
+        .shell-toast {
+          position: fixed; left: 16px; bottom: 16px; z-index: 70; max-width: 320px; cursor: pointer;
+          background: #6E2E26; color: #FBD8D2; font-size: 12.5px; line-height: 1.4; padding: 10px 12px;
+          border-radius: 8px; font-family: 'IBM Plex Sans', sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
 
         .shell-mobile-topbar { display: none; }
         .shell-backdrop { display: none; }
@@ -326,6 +412,18 @@ export default function AppShell({ session, onLogout }) {
           >
             <KeyRound size={15} />
           </button>
+          <button
+            className="shell-icon-btn"
+            onClick={descargarDatos}
+            disabled={descargando}
+            aria-label="Descargar mis datos (JSON, sin imágenes)"
+            title={descargando ? "Preparando la descarga..." : "Descargar mis datos (JSON, sin imágenes)"}
+          >
+            <Download size={15} />
+          </button>
+          <button className="shell-icon-btn danger" onClick={abrirEliminar} aria-label="Eliminar cuenta" title="Eliminar cuenta">
+            <Trash2 size={15} />
+          </button>
           <button className="shell-icon-btn" onClick={onLogout} aria-label="Cerrar sesión" title="Cerrar sesión">
             <LogOut size={15} />
           </button>
@@ -384,6 +482,73 @@ export default function AppShell({ session, onLogout }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {showEliminarModal && (
+        <div className="shell-modal-backdrop" onClick={cerrarEliminar}>
+          <div className="shell-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="shell-modal-head">
+              <div style={{ fontSize: 17, fontWeight: 600, color: "#E7ECF2", fontFamily: "Space Grotesk, sans-serif" }}>
+                Eliminar cuenta
+              </div>
+              <button className="shell-icon-btn" onClick={cerrarEliminar} disabled={eliminando} aria-label="Cerrar">
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="shell-modal-text">
+              Se borrarán <strong>para siempre</strong> tu cuenta y todo lo que has guardado: operaciones, estrategia,
+              cuentas, objetivos, contabilidad, payouts y todas tus capturas. <strong>No se puede deshacer.</strong>
+            </p>
+
+            <div className="shell-descarga">
+              <button className="shell-link-btn" onClick={descargarDatos} disabled={descargando || eliminando}>
+                <Download size={14} /> {descargando ? "Preparando la descarga..." : "Antes de eliminar, descarga tus datos"}
+              </button>
+              <div>Archivo JSON con todos tus datos. Las imágenes no se incluyen: solo la lista de sus rutas.</div>
+            </div>
+
+            {descargaError && <div className="shell-msg-error">{descargaError}</div>}
+            {eliminarError && <div className="shell-msg-error">{eliminarError}</div>}
+
+            <div className="shell-field">
+              <label htmlFor="eliminar-pass">Tu contraseña</label>
+              <input
+                id="eliminar-pass"
+                type="password"
+                autoComplete="current-password"
+                value={eliminarPass}
+                onChange={(e) => setEliminarPass(e.target.value)}
+                disabled={eliminando}
+              />
+            </div>
+            <div className="shell-field">
+              <label htmlFor="eliminar-palabra">Escribe {PALABRA_ELIMINAR} para confirmar</label>
+              <input
+                id="eliminar-palabra"
+                type="text"
+                autoComplete="off"
+                value={eliminarPalabra}
+                onChange={(e) => setEliminarPalabra(e.target.value)}
+                placeholder={PALABRA_ELIMINAR}
+                disabled={eliminando}
+              />
+            </div>
+
+            <div className="shell-modal-actions">
+              <button className="shell-btn" onClick={cerrarEliminar} disabled={eliminando}>Cancelar</button>
+              <button className="shell-btn danger" onClick={eliminarCuenta} disabled={!puedeEliminar}>
+                {eliminando ? "Eliminando..." : "Eliminar mi cuenta"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {descargaError && !showEliminarModal && (
+        <div className="shell-toast" role="alert" onClick={() => setDescargaError("")} title="Cerrar">
+          {descargaError}
         </div>
       )}
     </div>
