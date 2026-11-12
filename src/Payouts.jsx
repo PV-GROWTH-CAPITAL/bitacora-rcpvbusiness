@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Plus, X, Trash2, Pencil, HandCoins, ImagePlus, ChevronLeft, ChevronRight, Maximize2, Loader2 } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { supabase, conReintento } from "./supabaseClient";
+import { resumenPayouts, curvaCobrado, repartoPorEmpresa } from "./utils/estadisticasFondeo";
 
 const TABLA_RETIROS = "retiros"; // fuente de verdad del cobro: la comparten Contabilidad y Cuentas activas
 const TABLA_PAYOUTS = "payouts"; // solo la captura de cada retiro
@@ -21,6 +23,15 @@ function fmtDate(d, anioLargo = false) {
   if (isNaN(dt)) return d;
   return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: anioLargo ? "numeric" : "2-digit" });
 }
+
+function fmtDateCorta(d) {
+  if (!d) return "";
+  const dt = new Date(d + "T00:00:00");
+  return isNaN(dt) ? d : dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
+const fmtEurEje = (v) => `${Number(v).toLocaleString("es-ES", { maximumFractionDigits: 0 })} €`;
+const fmtPct = (n) => `${n.toLocaleString("es-ES", { maximumFractionDigits: 1 })} %`;
 
 function todayIsoLocal() {
   const d = new Date();
@@ -184,8 +195,12 @@ export default function Payouts({ session, empresas: empresasUsuario = [] }) {
     [filas, filtroCuenta]
   );
 
-  const total = useMemo(() => lista.reduce((s, f) => s + (Number(f.monto) || 0), 0), [lista]);
-  const primeraFecha = lista.length ? lista[lista.length - 1].fecha : null;
+  // Los cálculos viven en utils/estadisticasFondeo.js; aquí se aplican a la lista ya filtrada por cuenta.
+  const resumen = useMemo(() => resumenPayouts(lista), [lista]);
+  const curva = useMemo(() => curvaCobrado(lista), [lista]);
+  const reparto = useMemo(() => repartoPorEmpresa(lista), [lista]);
+  const total = resumen.total;
+  const primeraFecha = resumen.primeraFecha;
   const sinCaptura = useMemo(() => lista.filter((f) => !f.captura).length, [lista]);
 
   // Empresas del desplegable del modal: tus firmas más cualquier otra que ya aparezca en tus retiros.
@@ -428,6 +443,25 @@ export default function Payouts({ session, empresas: empresasUsuario = [] }) {
         .po-filtro select { background: transparent; border: none; color: var(--accent); font-weight: 600; font-family: 'IBM Plex Mono', monospace; font-size: 14px; outline: none; cursor: pointer; max-width: 240px; }
         .po-filtro select option { background: var(--surface); color: var(--text); }
 
+        .po-stats { flex-basis: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; border-top: 1px solid rgba(124, 99, 53, 0.45); padding-top: 16px; }
+        .po-stat { min-width: 0; }
+        .po-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); }
+        .po-stat-valor { font-size: 19px; font-weight: 600; color: var(--text); margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .po-stat-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* PANELES: CURVA Y REPARTO */
+        .po-paneles { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 22px; margin-bottom: 28px; }
+        .po-panel { background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+        .po-panel-titulo { font-size: 11px; letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 12px; }
+        .po-panel-vacio { height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 12.5px; color: var(--text-dim); }
+        .po-reparto { display: flex; flex-direction: column; gap: 14px; max-height: 200px; overflow-y: auto; }
+        .po-reparto-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; }
+        .po-reparto-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+        .po-reparto-importe { color: var(--accent); font-weight: 600; white-space: nowrap; }
+        .po-reparto-barra { height: 6px; border-radius: 999px; background: var(--bg); overflow: hidden; margin: 6px 0 4px; }
+        .po-reparto-barra div { height: 100%; border-radius: 999px; background: var(--accent); }
+        .po-reparto-sub { font-size: 11px; color: var(--text-dim); }
+
         /* REJILLA */
         .po-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
         .po-card {
@@ -523,12 +557,14 @@ export default function Payouts({ session, empresas: empresasUsuario = [] }) {
 
         @media (max-width: 1100px) {
           .po-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+          .po-paneles { grid-template-columns: minmax(0, 1fr); gap: 18px; }
         }
         @media (max-width: 720px) {
           .po-main { padding: 18px 16px 36px; }
           .po-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
           .po-total { font-size: 28px; }
           .po-resumen { padding: 18px; }
+          .po-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .po-filtro { width: 100%; justify-content: space-between; }
           .po-visor-stage { padding: 60px 12px 8px; }
           .po-visor-btn.prev, .po-visor-btn.next { top: auto; bottom: 14px; transform: none; width: 40px; height: 40px; }
@@ -566,7 +602,7 @@ export default function Payouts({ session, empresas: empresasUsuario = [] }) {
             <div className="po-resumen-sub">
               {lista.length === 0
                 ? "Sin payouts registrados"
-                : `${lista.length} ${lista.length === 1 ? "payout" : "payouts"} · desde ${fmtDate(primeraFecha, true)}${sinCaptura > 0 ? ` · ${sinCaptura} sin captura` : ""}`}
+                : `Desde ${fmtDate(primeraFecha, true)}${sinCaptura > 0 ? ` · ${sinCaptura} sin captura` : ""}`}
             </div>
           </div>
           {cuentas.length > 0 && (
@@ -578,7 +614,82 @@ export default function Payouts({ session, empresas: empresasUsuario = [] }) {
               </select>
             </div>
           )}
+          {lista.length > 0 && (
+            <div className="po-stats">
+              <div className="po-stat">
+                <div className="po-stat-label">Payout medio</div>
+                <div className="po-stat-valor po-mono">{fmtEur(resumen.medio)}</div>
+                <div className="po-stat-sub">bruto por cobro</div>
+              </div>
+              <div className="po-stat">
+                <div className="po-stat-label">Mejor payout</div>
+                <div className="po-stat-valor po-mono">{fmtEur(resumen.mejor?.monto)}</div>
+                <div className="po-stat-sub">{[resumen.mejor?.cuenta, fmtDateCorta(resumen.mejor?.fecha)].filter(Boolean).join(" · ")}</div>
+              </div>
+              <div className="po-stat">
+                <div className="po-stat-label">Payouts</div>
+                <div className="po-stat-valor po-mono">{resumen.numero}</div>
+                <div className="po-stat-sub">{resumen.numero === 1 ? "cobro registrado" : "cobros registrados"}</div>
+              </div>
+              <div className="po-stat">
+                <div className="po-stat-label">Meses con cobros</div>
+                <div className="po-stat-valor po-mono">{resumen.mesesConCobros}</div>
+                <div className="po-stat-sub">{resumen.mesesConCobros === 1 ? "mes distinto" : "meses distintos"}</div>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* CURVA DE COBRADO ACUMULADO + REPARTO POR EMPRESA */}
+        {loaded && lista.length > 0 && (
+          <div className="po-paneles">
+            <div className="po-panel">
+              <div className="po-panel-titulo po-mono">COBRADO ACUMULADO</div>
+              <div style={{ height: 200 }}>
+                {curva.length > 1 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={curva} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="poGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#C6A15A" stopOpacity={0.35} />
+                          <stop offset="100%" stopColor="#C6A15A" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#262C39" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="fecha" stroke="#8891A1" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} tickFormatter={fmtDateCorta} minTickGap={28} />
+                      <YAxis stroke="#8891A1" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} width={74} tickFormatter={fmtEurEje} />
+                      <Tooltip
+                        contentStyle={{ background: "#171D28", border: "1px solid #262C39", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }}
+                        itemStyle={{ color: "#ECEFF3" }}
+                        labelStyle={{ color: "#8891A1", marginBottom: 4 }}
+                        labelFormatter={(v, p) => (p && p[0] ? `${fmtDateCorta(v)} · +${fmtEur(p[0].payload.cobrado)}` : fmtDateCorta(v))}
+                        formatter={(v) => [fmtEur(v), "Cobrado acumulado"]}
+                      />
+                      <Area type="stepAfter" dataKey="acumulado" stroke="#C6A15A" strokeWidth={2} fill="url(#poGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="po-panel-vacio">Necesitas cobros en al menos 2 días distintos para ver la curva.</div>
+                )}
+              </div>
+            </div>
+            <div className="po-panel">
+              <div className="po-panel-titulo po-mono">COBRADO POR EMPRESA</div>
+              <div className="po-reparto">
+                {reparto.map((e) => (
+                  <div key={e.empresa} className="po-reparto-fila">
+                    <div className="po-reparto-cab">
+                      <span className="po-reparto-nombre" title={e.empresa}>{e.empresa}</span>
+                      <span className="po-mono po-reparto-importe">{fmtEur(e.total)}</span>
+                    </div>
+                    <div className="po-reparto-barra"><div style={{ width: `${e.pct}%` }} /></div>
+                    <div className="po-reparto-sub po-mono">{fmtPct(e.pct)} · {e.numero} {e.numero === 1 ? "payout" : "payouts"}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* REJILLA DE CAPTURAS */}
         {!loaded ? (

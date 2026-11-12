@@ -22,6 +22,7 @@ import {
   RIESGO_PCT_POR_DEFECTO,
   RIESGO_MINIMO_POR_DEFECTO,
 } from "./calculoCuentas";
+import { calcularFundingRatio } from "./utils/estadisticasFondeo";
 
 const CUENTAS_TABLE = "cuentas";
 const TRADES_TABLE = "trades";
@@ -311,6 +312,8 @@ export default function CuentasActivas({ session }) {
   const perdidas = useMemo(() => cerradas.filter((c) => c.motivo_cierre === "quemada"), [cerradas]);
   const pasadas = useMemo(() => cerradas.filter((c) => c.motivo_cierre !== "quemada"), [cerradas]);
   const proveedores = useMemo(() => [...new Set(retiros.map((r) => r.proveedor).filter(Boolean))].sort(), [retiros]);
+  // Evaluaciones aprobadas (cerradas como "pasada a funded") sobre las decididas (aprobadas + quemadas).
+  const fundingRatio = useMemo(() => calcularFundingRatio(cuentas), [cuentas]);
 
   // Ejecuta una escritura en Supabase y recarga; devuelve true si ha ido bien.
   async function ejecutar(accion) {
@@ -909,6 +912,8 @@ export default function CuentasActivas({ session }) {
         }
         .cta-panel-row .cta-btn { padding: 7px 12px; flex-shrink: 0; }
         .cta-config { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 22px; }
+        .cta-ratio { display: flex; align-items: center; gap: 14px 28px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--eval); border-radius: 12px; padding: 12px 16px; margin-bottom: 22px; }
+        .cta-ratio-detalle { flex: 1; min-width: 200px; }
         .cta-config-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
         .cta-config-line .cta-icon-btn { margin-left: auto; }
         .cta-config-head { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
@@ -1050,6 +1055,28 @@ export default function CuentasActivas({ session }) {
             </div>
           )}
         </div>
+
+        {loaded && (
+          <div className="cta-ratio">
+            <div>
+              <div className="cta-row-label">Funding ratio</div>
+              <div className="cta-kpi-valor cta-mono" style={{ color: fundingRatio.ratio === null ? "var(--text-dim)" : "var(--text)" }}>
+                {fundingRatio.ratio === null ? "\u2014" : `${Math.round(fundingRatio.ratio)} %`}
+              </div>
+            </div>
+            <div className="cta-ratio-detalle">
+              <div className="cta-bar cta-bar-lg">
+                <div className="cta-bar-fill" style={{ width: `${fundingRatio.ratio ?? 0}%`, background: "var(--eval)" }} />
+              </div>
+              <div className="cta-block-sub">
+                {fundingRatio.decididas === 0
+                  ? "Sin evaluaciones decididas todavía"
+                  : `${fundingRatio.aprobadas} de ${fundingRatio.decididas} ${fundingRatio.decididas === 1 ? "evaluación decidida" : "evaluaciones decididas"}`}
+                {fundingRatio.decididas > 0 && ` · ${fundingRatio.perdidas} ${fundingRatio.perdidas === 1 ? "perdida" : "perdidas"}`}
+              </div>
+            </div>
+          </div>
+        )}
 
         {loaded && (activas.length === 0 ? (
           <div className="cta-empty" style={{ marginBottom: 24 }}>
