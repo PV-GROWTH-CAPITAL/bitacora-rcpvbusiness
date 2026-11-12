@@ -17,6 +17,7 @@ import {
   Trash2,
   Pencil,
   Download,
+  Upload,
   ImagePlus,
   ImageDown,
   ChevronDown,
@@ -28,6 +29,7 @@ import {
 } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import OperativaImagen from "./OperativaImagen";
+import ImportarOperaciones from "./ImportarOperaciones";
 import { rutaDeCaptura, useUrlCaptura } from "./capturasUrls";
 
 const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -166,6 +168,7 @@ export default function TradingJournal({ session }) {
   const [calDate, setCalDate] = useState(() => new Date());
   const [selectedDays, setSelectedDays] = useState([]);
   const [showOperativa, setShowOperativa] = useState(false);
+  const [showImportar, setShowImportar] = useState(false);
   const [riesgoMaximo, setRiesgoMaximo] = useState(null);
   const [riesgoInput, setRiesgoInput] = useState("");
   const [riesgoLoaded, setRiesgoLoaded] = useState(false);
@@ -237,6 +240,12 @@ export default function TradingJournal({ session }) {
     const set = new Set(trades.map((t) => t.cuenta).filter(Boolean));
     return ["Todas", ...Array.from(set)];
   }, [trades]);
+
+  // Cuentas que ofrece el importador: las activas y las que ya tienen operaciones.
+  const cuentasImportar = useMemo(
+    () => Array.from(new Set([...cuentasActivas, ...cuentas.filter((c) => c !== "Todas")])),
+    [cuentasActivas, cuentas]
+  );
 
   const estrategiasUsadas = useMemo(() => {
     const set = new Set(trades.map((t) => t.estrategia).filter(Boolean));
@@ -1217,6 +1226,9 @@ export default function TradingJournal({ session }) {
           <button className="jt-btn" onClick={exportarCSV} disabled={sorted.length === 0}>
             <Download size={14} /> Exportar
           </button>
+          <button className="jt-btn" onClick={() => setShowImportar(true)}>
+            <Upload size={14} /> Importar
+          </button>
           <button className="jt-btn primary" onClick={openNuevo}>
             <Plus size={15} /> Nueva operación
           </button>
@@ -1582,6 +1594,16 @@ export default function TradingJournal({ session }) {
           )}
         </div>
       </div>
+
+      {showImportar && (
+        <ImportarOperaciones
+          session={session}
+          cuentas={cuentasImportar}
+          cuentaInicial={filtroCuenta !== "Todas" ? filtroCuenta : ""}
+          onClose={() => setShowImportar(false)}
+          onImportado={cargarTrades}
+        />
+      )}
 
       {showForm && (
         <div className="jt-modal-backdrop" onClick={cerrarForm}>
