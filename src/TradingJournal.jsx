@@ -31,8 +31,8 @@ import { supabase, conReintento } from "./supabaseClient";
 import OperativaImagen from "./OperativaImagen";
 import ImportarOperaciones from "./ImportarOperaciones";
 import { rutaDeCaptura, useUrlCaptura } from "./capturasUrls";
+import { DIAS_SEMANA, celdasMes } from "./utils/calendario";
 
-const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const TABLE = "trades";
 
 function fmtMoney(n) {
@@ -276,16 +276,7 @@ export default function TradingJournal({ session }) {
   const calendarCells = useMemo(() => {
     const year = calDate.getFullYear();
     const month = calDate.getMonth();
-    const firstWeekdaySun = new Date(year, month, 1).getDay();
-    const firstWeekday = (firstWeekdaySun + 6) % 7; // 0 = lunes
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const cells = [];
-    for (let i = 0; i < firstWeekday; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) {
-      const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      cells.push({ day: d, iso, data: dailyTotals[iso] || null });
-    }
-    return cells;
+    return celdasMes(year, month).map((c) => (c ? { ...c, data: dailyTotals[c.iso] || null } : null));
   }, [calDate, dailyTotals]);
 
   const monthTotal = useMemo(() => {

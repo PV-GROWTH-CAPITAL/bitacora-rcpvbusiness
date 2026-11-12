@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import FiltroPeriodo from "./FiltroPeriodo";
+import CalendarioDinero from "./CalendarioDinero";
 import { enRango, empresaDeRetiro, normEmpresa } from "./utils/estadisticasFondeo";
 import {
   MESES_CORTOS, TRIMESTRES, TODAS_EMPRESAS,
@@ -209,6 +210,20 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
     };
   }, [activeTab, comprasF, retirosF, compras, retiros, getEmpresaDeRetiro]);
 
+  // --- CALENDARIO DE DINERO ---
+  // Historial completo (el calendario navega por meses, no sigue el periodo del filtro), con el
+  // mismo criterio de gastos que el resto de la página: en General, cuentas + inversiones
+  // desgravables; en una empresa, solo sus compras y sus retiros.
+  const movsCalendario = useMemo(() => {
+    if (activeTab === "GENERAL") return { retiros, compras, inversiones };
+    const emp = getEmpresaNorm(activeTab);
+    return {
+      retiros: retiros.filter((r) => getEmpresaDeRetiro(r) === emp),
+      compras: compras.filter((c) => getEmpresaNorm(c.proveedor) === emp),
+      inversiones: [],
+    };
+  }, [activeTab, retiros, compras, inversiones, getEmpresaDeRetiro]);
+
   // --- TABLA RESUMEN DEL AÑO (una fila por trimestre o por mes) ---
   // Mismos importes que las tarjetas; en General los gastos incluyen las inversiones
   // desgravables (igual que el neto a tributar) y en una empresa solo sus compras/retiros.
@@ -327,6 +342,16 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
     if ((await supabase.from(TABLA_INVERSIONES).delete().eq("id", id)).error) return setError(true);
     await cargar();
   }
+
+  const calendario = (
+    <CalendarioDinero
+      {...movsCalendario}
+      hoy={hoyDia}
+      nota={activeTab === "GENERAL"
+        ? "Todas las empresas · los retiros cuentan el día en que llegan en € · gastos = cuentas + inversiones desgravables"
+        : `Solo ${activeTab} · los retiros cuentan el día en que llegan en €`}
+    />
+  );
 
   return (
     <div className="jt-app">
@@ -577,6 +602,8 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
               </div>
             </div>
 
+            {calendario}
+
             {/* TABLA: DESGLOSE POR EMPRESAS */}
             <div className="jt-panel">
               <div className="jt-panel-head">
@@ -677,6 +704,8 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>Toda la historia en {activeTab}</div>
               </div>
             </div>
+
+            {calendario}
 
             {/* TABLA DE COMPRAS DE ESTA EMPRESA */}
             <div className="jt-panel">

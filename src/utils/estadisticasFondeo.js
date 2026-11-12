@@ -117,3 +117,47 @@ export function repartoPorEmpresa(retiros = [], rango = null) {
     .map(([empresa, { c, n }]) => ({ empresa, total: deCentimos(c), numero: n, pct: totalC > 0 ? (c / totalC) * 100 : 0 }))
     .sort((a, b) => b.total - a.total || a.empresa.localeCompare(b.empresa, "es"));
 }
+
+// Dinero por día, para el calendario de Contabilidad. Importes en € (`retiros.monto`,
+// `cuentas_compradas.costo`, `inversiones_desgravables.monto`): cobrado y gastado en positivo,
+// neto = cobrado − gastado. La fecha de un retiro es `fecha`: el día en que llega el dinero.
+// → { [YYYY-MM-DD]: { cobrado, gastado, neto, numero (movimientos de ese día) } }
+export function movimientosPorDia({ retiros = [], compras = [], inversiones = [] } = {}, rango = null) {
+  const porDia = new Map();
+  const apuntar = (fecha, cobradoC, gastadoC) => {
+    if (!fecha || !enRango(fecha, rango)) return;
+    const iso = String(fecha).slice(0, 10);
+    const d = porDia.get(iso) || { cobradoC: 0, gastadoC: 0, numero: 0 };
+    d.cobradoC += cobradoC;
+    d.gastadoC += gastadoC;
+    d.numero += 1;
+    porDia.set(iso, d);
+  };
+  retiros.forEach((r) => apuntar(r.fecha, aCentimos(r.monto), 0));
+  compras.forEach((c) => apuntar(c.fecha, 0, aCentimos(c.costo)));
+  inversiones.forEach((i) => apuntar(i.fecha, 0, aCentimos(i.monto)));
+
+  const salida = {};
+  porDia.forEach((d, iso) => {
+    salida[iso] = { cobrado: deCentimos(d.cobradoC), gastado: deCentimos(d.gastadoC), neto: deCentimos(d.cobradoC - d.gastadoC), numero: d.numero };
+  });
+  return salida;
+}
+
+// Totales de cada mes de un año a partir de movimientosPorDia().
+// → 12 filas [{ mes (1-12), cobrado, gastado, neto, numero }]
+export function totalesPorMes(porDia = {}, anio) {
+  const filas = Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, cobradoC: 0, gastadoC: 0, numero: 0 }));
+  const prefijo = `${anio}-`;
+  Object.entries(porDia).forEach(([iso, d]) => {
+    if (!iso.startsWith(prefijo)) return;
+    const f = filas[Number(iso.slice(5, 7)) - 1];
+    if (!f) return;
+    f.cobradoC += aCentimos(d.cobrado);
+    f.gastadoC += aCentimos(d.gastado);
+    f.numero += d.numero;
+  });
+  return filas.map((f) => ({
+    mes: f.mes, cobrado: deCentimos(f.cobradoC), gastado: deCentimos(f.gastadoC), neto: deCentimos(f.cobradoC - f.gastadoC), numero: f.numero,
+  }));
+}
