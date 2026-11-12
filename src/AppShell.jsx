@@ -1,7 +1,9 @@
-import React, { useState } from "react";
-import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2 } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2, RefreshCw } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { descargarMisDatos, borrarCuenta } from "./misDatos";
+import { FIRMAS_SUGERIDAS, cargarEmpresas, tieneDatosContables, crearLista } from "./empresasUsuario";
+import { BienvenidaFirmas, ModalMisFirmas } from "./MisFirmas";
 
 const PALABRA_ELIMINAR = "ELIMINAR";
 import TradingJournal from "./TradingJournal";
@@ -32,7 +34,38 @@ export default function AppShell({ session, onLogout }) {
   const [eliminarError, setEliminarError] = useState("");
   const [eliminando, setEliminando] = useState(false);
 
-  const CONTABILIDAD_EMPRESAS = ["MY FUNDED FUTURES", "APEX", "LUCID TRADING", "TOPSTEP", "FUNDING PIPS", "FUNDED NEXT", "ALPHA CAPITAL", "TRADEIFY", "FTMO", "5ERS", "NYS MARKETS"];
+  // Firmas de fondeo del usuario (tabla empresas_usuario): filas { id, nombre, orden }.
+  const [empresas, setEmpresas] = useState([]);
+  const [firmasEstado, setFirmasEstado] = useState("cargando"); // "cargando" | "ok" | "bienvenida" | "error"
+  const [showFirmasModal, setShowFirmasModal] = useState(false);
+  const userId = session.user.id;
+
+  const cargarFirmas = useCallback(async () => {
+    setFirmasEstado("cargando");
+    try {
+      let lista = await cargarEmpresas();
+      if (!lista.length) {
+        // Sin lista todavía: quien ya tiene contabilidad recibe la lista de siempre;
+        // quien entra de nuevas elige las suyas en la bienvenida.
+        if (await tieneDatosContables()) {
+          lista = await crearLista(userId, FIRMAS_SUGERIDAS);
+        } else {
+          setEmpresas([]);
+          setFirmasEstado("bienvenida");
+          return;
+        }
+      }
+      setEmpresas(lista);
+      setFirmasEstado("ok");
+    } catch (e) {
+      console.error("No se han podido cargar las firmas:", e);
+      setFirmasEstado("error");
+    }
+  }, [userId]);
+
+  useEffect(() => { cargarFirmas(); }, [cargarFirmas]);
+
+  const nombresEmpresas = useMemo(() => empresas.map((e) => e.nombre), [empresas]);
 
   const analisisPages = ["journal", "estrategia", "cuentas-activas"];
   const analisisActivo = analisisPages.includes(page);
@@ -387,7 +420,12 @@ export default function AppShell({ session, onLogout }) {
               >
                 <Wallet size={14} /> Resumen general
               </button>
-              {CONTABILIDAD_EMPRESAS.map((empresa) => (
+              {firmasEstado === "error" && (
+                <button className="shell-subbtn" onClick={cargarFirmas} title="Volver a cargar tus firmas">
+                  <RefreshCw size={14} /> No se han cargado tus firmas. Reintentar
+                </button>
+              )}
+              {nombresEmpresas.map((empresa) => (
                 <button
                   key={empresa}
                   className={`shell-subbtn ${page === "contabilidad" && contabilidadEmpresa === empresa ? "active" : ""}`}
@@ -411,6 +449,15 @@ export default function AppShell({ session, onLogout }) {
             title="Cambiar contraseña"
           >
             <KeyRound size={15} />
+          </button>
+          <button
+            className="shell-icon-btn"
+            onClick={() => setShowFirmasModal(true)}
+            disabled={firmasEstado !== "ok"}
+            aria-label="Mis firmas de fondeo"
+            title="Mis firmas de fondeo"
+          >
+            <Briefcase size={15} />
           </button>
           <button
             className="shell-icon-btn"
@@ -442,11 +489,19 @@ export default function AppShell({ session, onLogout }) {
         ) : page === "objetivos" ? (
           <Objetivos session={session} />
         ) : page === "payouts" ? (
-          <Payouts session={session} />
+          <Payouts session={session} empresas={nombresEmpresas} />
         ) : (
-          <Contabilidad session={session} activeTab={contabilidadEmpresa} onActiveTabChange={setContabilidadEmpresa} />
+          <Contabilidad session={session} empresas={nombresEmpresas} activeTab={contabilidadEmpresa} onActiveTabChange={setContabilidadEmpresa} />
         )}
       </main>
+
+      {firmasEstado === "bienvenida" && (
+        <BienvenidaFirmas userId={userId} onListo={(lista) => { setEmpresas(lista); setFirmasEstado("ok"); }} />
+      )}
+
+      {showFirmasModal && firmasEstado === "ok" && (
+        <ModalMisFirmas userId={userId} empresas={empresas} onCambio={setEmpresas} onCerrar={() => setShowFirmasModal(false)} />
+      )}
 
       {showPasswordModal && (
         <div className="shell-modal-backdrop" onClick={() => setShowPasswordModal(false)}>

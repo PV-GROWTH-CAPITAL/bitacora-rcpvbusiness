@@ -211,7 +211,7 @@ export default function TradingJournal({ session }) {
   async function guardarRiesgo() {
     const valor = riesgoInput === "" ? null : Math.abs(Number(riesgoInput));
     setRiesgoMaximo(valor);
-    await supabase.from("configuracion").upsert({ riesgo_maximo_diario: valor });
+    await supabase.from("configuracion").upsert({ user_id: session.user.id, riesgo_maximo_diario: valor });
   }
 
   const cargarTrades = useCallback(async () => {
@@ -1191,7 +1191,7 @@ export default function TradingJournal({ session }) {
       <div className="jt-header">
         <div>
           <div className="jt-title jt-display">Bitácora de trading</div>
-          <div className="jt-subtitle jt-mono">Futuros · MNQ y cuentas de fondeo</div>
+          <div className="jt-subtitle jt-mono">Operaciones y cuentas de fondeo</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div className="jt-risk-field" title="Se pinta en el calendario cuando un día pierde más de este monto">
@@ -1611,7 +1611,7 @@ export default function TradingJournal({ session }) {
               )}
               <div className="jt-field">
                 <label>Instrumento</label>
-                <input value={form.instrumento} onChange={(e) => setForm({ ...form, instrumento: e.target.value })} placeholder="MNQ" />
+                <input value={form.instrumento} onChange={(e) => setForm({ ...form, instrumento: e.target.value })} placeholder="Ej. NQ, ES, EURUSD..." />
               </div>
               <div className="jt-field">
                 <label>Dirección</label>

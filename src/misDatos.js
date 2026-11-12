@@ -22,6 +22,7 @@ const TABLAS = [
   "habito_registros",
   "configuracion",
   "inversiones_desgravables",
+  "empresas_usuario",
 ];
 
 const PAGINA = 1000;
