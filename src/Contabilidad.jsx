@@ -4,6 +4,12 @@ import {
   TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ChevronRight, CalendarRange
 } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
+import FiltroPeriodo from "./FiltroPeriodo";
+import { enRango, empresaDeRetiro, normEmpresa } from "./utils/estadisticasFondeo";
+import {
+  MESES_CORTOS, TRIMESTRES, TODAS_EMPRESAS,
+  hoyIso, partesIso, trimestreDe, rangoDeFiltro, etiquetaFiltro, aniosDisponibles,
+} from "./utils/periodo";
 
 const TABLA_COMPRAS = "cuentas_compradas";
 const TABLA_RETIROS = "retiros";
@@ -27,53 +33,28 @@ function todayIsoLocal() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// --- PERIODOS FISCALES (hora de Madrid) ---
-const ZONA_FISCAL = "Europe/Madrid";
-const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-const TRIMESTRES = [
-  { n: 1, label: "T1", rango: "ene – mar" },
-  { n: 2, label: "T2", rango: "abr – jun" },
-  { n: 3, label: "T3", rango: "jul – sep" },
-  { n: 4, label: "T4", rango: "oct – dic" },
-];
-const fmtAnioMesMadrid = new Intl.DateTimeFormat("en-CA", { timeZone: ZONA_FISCAL, year: "numeric", month: "2-digit" });
-
-// Año y mes (1-12) de una fecha en hora de Madrid. Las columnas `date` (YYYY-MM-DD) ya son
-// el día civil y se leen tal cual: pasarlas por new Date() las trataría como medianoche UTC.
-// Solo los timestamps con hora se convierten a Madrid.
-function partesFecha(f) {
-  if (!f) return null;
-  const soloFecha = /^(\d{4})-(\d{2})-\d{2}$/.exec(f);
-  if (soloFecha) return { anio: soloFecha[1], mes: Number(soloFecha[2]) };
-  const d = new Date(f);
-  if (isNaN(d)) return null;
-  const p = Object.fromEntries(fmtAnioMesMadrid.formatToParts(d).map((x) => [x.type, x.value]));
-  return { anio: p.year, mes: Number(p.month) };
-}
-
-function hoyMadrid() {
-  return partesFecha(new Date().toISOString());
-}
-
-const trimestreDe = (mes) => Math.ceil(mes / 3);
-
 const emptyCompra = { fecha: todayIsoLocal(), cuenta: "", proveedor: "", costo: "", notas: "" };
 const emptyRetiro = { fecha: todayIsoLocal(), cuenta: "", proveedor: "", monto: "", notas: "" };
 const emptyInv = { fecha: todayIsoLocal(), concepto: "", monto: "", notas: "" };
 
 // empresas: nombres de las firmas del usuario (tabla empresas_usuario), en su orden. Llegan de AppShell.
-export default function Contabilidad({ session, empresas = [], activeTab = "GENERAL", onActiveTabChange }) {
+// filtro / onFiltroCambio: filtro global de periodo y empresa (estado de AppShell, barra FiltroPeriodo).
+// La empresa del filtro es la vista activa: "GENERAL" = resumen de todas; cualquier otra, esa firma.
+export default function Contabilidad({ session, empresas = [], filtro, onFiltroCambio }) {
+  const activeTab = filtro.empresa || TODAS_EMPRESAS;
+  const onActiveTabChange = (empresa) => onFiltroCambio({ ...filtro, empresa });
   const [compras, setCompras] = useState([]);
   const [retiros, setRetiros] = useState([]);
   const [inversiones, setInversiones] = useState([]);
   
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
-  const [anioFiltro, setAnioFiltro] = useState("Todos");
-  const hoy = useMemo(() => hoyMadrid(), []);
-  const [modoPeriodo, setModoPeriodo] = useState("anio"); // "anio" | "trimestre" | "mes"
-  const [trimestreSel, setTrimestreSel] = useState(() => trimestreDe(hoyMadrid().mes));
-  const [mesSel, setMesSel] = useState(() => hoyMadrid().mes);
+  const hoyDia = useMemo(() => hoyIso(), []); // hoy en Madrid, "YYYY-MM-DD"
+  const hoy = useMemo(() => partesIso(hoyDia), [hoyDia]);
+  const modoPeriodo = filtro.modo;
+  const anioFiltro = filtro.anio;
+  const trimestreSel = filtro.trimestre;
+  const mesSel = filtro.mes;
 
   // Estados Modales
   const [showCompraForm, setShowCompraForm] = useState(false);
@@ -111,51 +92,31 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
     cargar();
   }, [cargar]);
 
-  // Años disponibles para el selector (el año en curso siempre aparece)
-  const añosDisponibles = useMemo(() => {
-    const set = new Set([hoy.anio]);
-    [...compras, ...retiros, ...inversiones].forEach((x) => {
-      const p = partesFecha(x.fecha);
-      if (p) set.add(p.anio);
-    });
-    return ["Todos", ...Array.from(set).sort((a, b) => b - a)];
-  }, [compras, retiros, inversiones, hoy]);
+  // Años del selector (el año en curso siempre aparece)
+  const anios = useMemo(
+    () => aniosDisponibles([...compras, ...retiros, ...inversiones].map((x) => x.fecha), filtro, hoyDia),
+    [compras, retiros, inversiones, filtro, hoyDia]
+  );
 
-  function cambiarModoPeriodo(modo) {
-    setModoPeriodo(modo);
-    // Trimestre y mes siempre van dentro de un año concreto
-    if (modo !== "anio" && anioFiltro === "Todos") setAnioFiltro(hoy.anio);
-  }
+  // --- FILTRADO POR PERIODO ---
+  // Las fechas "YYYY-MM-DD" se comparan como texto contra el rango del filtro (sin new Date()).
+  const rango = useMemo(() => rangoDeFiltro(filtro, hoyDia), [filtro, hoyDia]);
+  const enPeriodo = useCallback((fecha) => enRango(fecha, rango), [rango]);
 
-  // --- FILTRADO POR PERIODO (año / trimestre / mes) ---
-  const enPeriodo = useCallback((fecha) => {
-    if (anioFiltro === "Todos") return true;
-    const p = partesFecha(fecha);
-    if (!p || p.anio !== anioFiltro) return false;
-    if (modoPeriodo === "trimestre") return trimestreDe(p.mes) === trimestreSel;
-    if (modoPeriodo === "mes") return p.mes === mesSel;
-    return true;
-  }, [anioFiltro, modoPeriodo, trimestreSel, mesSel]);
-
-  const etiquetaPeriodo = anioFiltro === "Todos" ? "Todos"
-    : modoPeriodo === "trimestre" ? `T${trimestreSel} ${anioFiltro}`
-    : modoPeriodo === "mes" ? `${MESES_CORTOS[mesSel - 1]} ${anioFiltro}`
-    : anioFiltro;
-  const tituloNeto = modoPeriodo === "trimestre" ? "NETO TRIMESTRE" : modoPeriodo === "mes" ? "NETO MES" : "NETO AÑO";
+  const etiquetaPeriodo = etiquetaFiltro(filtro);
+  const tituloNeto = modoPeriodo === "trimestre" ? "NETO TRIMESTRE" : modoPeriodo === "mes" ? "NETO MES" : modoPeriodo === "anio" ? "NETO AÑO" : "NETO DEL PERIODO";
+  // «Neto a tributar» solo tiene sentido con un periodo fiscal (año o trimestre).
+  const esPeriodoFiscal = modoPeriodo === "anio" || modoPeriodo === "trimestre";
 
   const comprasF = useMemo(() => compras.filter(c => enPeriodo(c.fecha)), [compras, enPeriodo]);
   const retirosF = useMemo(() => retiros.filter(r => enPeriodo(r.fecha)), [retiros, enPeriodo]);
   const inversionesF = useMemo(() => inversiones.filter(i => enPeriodo(i.fecha)), [inversiones, enPeriodo]);
 
   // Normalizador de nombres de empresas para evitar errores de espacios/mayúsculas
-  const getEmpresaNorm = (p) => (p || "").trim().toUpperCase();
+  const getEmpresaNorm = normEmpresa;
 
   // Helper para vincular retiros con empresa si no tienen el campo `proveedor` explicitado
-  const getEmpresaDeRetiro = useCallback((retiro) => {
-    if (retiro.proveedor) return getEmpresaNorm(retiro.proveedor);
-    const cuentaRef = compras.find(c => c.cuenta === retiro.cuenta);
-    return cuentaRef ? getEmpresaNorm(cuentaRef.proveedor) : "";
-  }, [compras]);
+  const getEmpresaDeRetiro = useCallback((retiro) => empresaDeRetiro(retiro, compras), [compras]);
 
   // --- MÉTRICAS HISTÓRICAS TOTALES (CARRERA COMPLETA) ---
   const historicoGlobal = useMemo(() => {
@@ -252,7 +213,7 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
   // Mismos importes que las tarjetas; en General los gastos incluyen las inversiones
   // desgravables (igual que el neto a tributar) y en una empresa solo sus compras/retiros.
   const tablaPeriodos = useMemo(() => {
-    if (modoPeriodo === "anio" || anioFiltro === "Todos") return null;
+    if (modoPeriodo !== "trimestre" && modoPeriodo !== "mes") return null;
     const esGeneral = activeTab === "GENERAL";
     if (!esGeneral && !datosEmpresaActiva) return null;
     const empNombreNorm = getEmpresaNorm(activeTab);
@@ -260,7 +221,7 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
 
     const filas = Array.from({ length: porTrimestre ? 4 : 12 }, (_, i) => ({ idx: i + 1, ingresos: 0, gastos: 0, movimientos: 0 }));
     const filaDe = (fecha) => {
-      const p = partesFecha(fecha);
+      const p = partesIso(fecha);
       if (!p || p.anio !== anioFiltro) return null;
       return filas[(porTrimestre ? trimestreDe(p.mes) : p.mes) - 1];
     };
@@ -403,9 +364,6 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
         .jt-main-content { flex: 1; overflow-y: auto; padding: 28px 36px; max-width: 1200px; }
         .jt-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
         
-        .jt-year-selector { display: flex; align-items: center; gap: 10px; background: var(--surface-2); padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); }
-        .jt-year-selector select { background: transparent; border: none; color: var(--accent); font-weight: 600; font-family: 'IBM Plex Mono'; font-size: 15px; outline: none; cursor: pointer; }
-
         .jt-btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); transition: all 0.15s ease; }
         .jt-btn:hover { border-color: var(--accent-dim); transform: translateY(-1px); }
         .jt-btn.primary { background: linear-gradient(180deg, #D8B876, var(--accent)); color: #1A1408; border-color: var(--accent); font-weight: 600; }
@@ -452,22 +410,7 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
           .jt-main-content { padding: 16px; }
         }
 
-        /* SELECTOR DE PERIODO */
-        .jt-periodo { display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px; }
-        .jt-periodo-fila { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-        .jt-seg { display: inline-flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 3px; }
-        .jt-seg button { background: transparent; border: none; color: var(--text-dim); font-family: inherit; font-size: 13px; font-weight: 500; padding: 6px 16px; border-radius: 6px; cursor: pointer; transition: color 0.15s ease, background 0.15s ease; }
-        .jt-seg button:hover { color: var(--text); }
-        .jt-seg button.on { background: var(--bg); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-dim); font-weight: 600; }
-        .jt-chips { display: grid; gap: 6px; }
-        .jt-chips.trimestres { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-        .jt-chips.meses { grid-template-columns: repeat(12, minmax(0, 1fr)); }
-        .jt-chip { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 4px; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; }
-        .jt-chip small { font-family: 'IBM Plex Sans', sans-serif; font-size: 10.5px; color: var(--text-dim); opacity: 0.8; }
-        .jt-chip:hover { border-color: var(--accent-dim); color: var(--text); }
-        .jt-chip.on { background: rgba(198, 161, 90, 0.1); border-color: var(--accent); color: var(--accent); font-weight: 600; }
-        .jt-chip.now::after { content: ""; position: absolute; top: 5px; right: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-        .jt-seg button:focus-visible, .jt-chip:focus-visible, .jt-res-fila:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .jt-res-fila:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
         /* TABLA RESUMEN DEL AÑO */
         .jt-res-nota { font-size: 11px; color: var(--text-dim); }
@@ -494,10 +437,6 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
         .jt-res-fila > .jt-res-lab { white-space: normal; }
 
         @media (max-width: 640px) {
-          .jt-seg { width: 100%; }
-          .jt-seg button { flex: 1; padding: 7px 8px; }
-          .jt-periodo-fila .jt-year-selector { width: 100%; justify-content: space-between; }
-          .jt-chips.meses { grid-template-columns: repeat(6, minmax(0, 1fr)); }
           .jt-resumen { padding: 16px 12px; }
           .jt-res-cab { display: none; }
           .jt-res-fila {
@@ -529,54 +468,8 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
           </div>
         </div>
 
-        {/* SELECTOR DE PERIODO */}
-        <div className="jt-periodo">
-          <div className="jt-periodo-fila">
-            <div className="jt-seg" role="group" aria-label="Agrupar por periodo">
-              {[["anio", "Año"], ["trimestre", "Trimestre"], ["mes", "Mes"]].map(([modo, label]) => (
-                <button key={modo} type="button" className={modoPeriodo === modo ? "on" : ""} aria-pressed={modoPeriodo === modo} onClick={() => cambiarModoPeriodo(modo)}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="jt-year-selector">
-              <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Ejercicio Fiscal:</span>
-              <select value={anioFiltro} onChange={(e) => setAnioFiltro(e.target.value)}>
-                {añosDisponibles.filter(a => modoPeriodo === "anio" || a !== "Todos").map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {modoPeriodo === "trimestre" && (
-            <div className="jt-chips trimestres">
-              {TRIMESTRES.map((t) => (
-                <button
-                  key={t.n} type="button"
-                  className={`jt-chip${trimestreSel === t.n ? " on" : ""}${anioFiltro === hoy.anio && trimestreDe(hoy.mes) === t.n ? " now" : ""}`}
-                  aria-pressed={trimestreSel === t.n}
-                  onClick={() => setTrimestreSel(t.n)}
-                >
-                  {t.label}<small>{t.rango}</small>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {modoPeriodo === "mes" && (
-            <div className="jt-chips meses">
-              {MESES_CORTOS.map((m, i) => (
-                <button
-                  key={m} type="button"
-                  className={`jt-chip${mesSel === i + 1 ? " on" : ""}${anioFiltro === hoy.anio && hoy.mes === i + 1 ? " now" : ""}`}
-                  aria-pressed={mesSel === i + 1}
-                  onClick={() => setMesSel(i + 1)}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* FILTRO GLOBAL DE PERIODO Y EMPRESA (compartido con Payouts) */}
+        <FiltroPeriodo filtro={filtro} onCambio={onFiltroCambio} empresas={empresas} anios={anios} hoy={hoyDia} />
 
         {/* TABLA RESUMEN DEL AÑO POR TRIMESTRE / MES */}
         {tablaPeriodos && (
@@ -607,7 +500,7 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
                     key={f.idx} type="button"
                     className={`jt-res-fila${sel ? " sel" : ""}${sinDatos ? " futuro" : ""}`}
                     aria-pressed={sel}
-                    onClick={() => (tablaPeriodos.porTrimestre ? setTrimestreSel(f.idx) : setMesSel(f.idx))}
+                    onClick={() => onFiltroCambio({ ...filtro, ...(tablaPeriodos.porTrimestre ? { trimestre: f.idx } : { mes: f.idx }) })}
                   >
                     <span className="jt-res-lab">
                       <b>{tablaPeriodos.porTrimestre ? TRIMESTRES[f.idx - 1].label : MESES_CORTOS[f.idx - 1]}</b>
@@ -659,11 +552,13 @@ export default function Contabilidad({ session, empresas = [], activeTab = "GENE
 
               {/* NETO A TRIBUTAR DEL AÑO */}
               <div className="jt-card highlight">
-                <div className="jt-card-title" style={{ color: "var(--accent)" }}>NETO A TRIBUTAR ({etiquetaPeriodo})</div>
+                <div className="jt-card-title" style={{ color: "var(--accent)" }}>{esPeriodoFiscal ? "NETO A TRIBUTAR" : "NETO DEL PERIODO"} ({etiquetaPeriodo})</div>
                 <div className={`jt-card-value jt-mono ${resumenPeriodo.netoTributable >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
                   {fmtMoney(resumenPeriodo.netoTributable)}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>Base imponible para impuestos</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
+                  {esPeriodoFiscal ? "Base imponible para impuestos" : "Retiros − cuentas − inversiones desgravables"}
+                </div>
               </div>
 
               <div className="jt-card">

@@ -5,6 +5,7 @@ import { descargarMisDatos, borrarCuenta } from "./misDatos";
 import { FIRMAS_SUGERIDAS, cargarEmpresas, tieneDatosContables, crearLista } from "./empresasUsuario";
 import { BienvenidaFirmas, ModalMisFirmas } from "./MisFirmas";
 import { cargarOCrearPerfil, guardarAceptaCorreos } from "./perfil";
+import { filtroInicial } from "./utils/periodo";
 
 const PALABRA_ELIMINAR = "ELIMINAR";
 import TradingJournal from "./TradingJournal";
@@ -19,7 +20,11 @@ export default function AppShell({ session, onLogout }) {
   const [page, setPage] = useState("journal"); // "journal" | "estrategia" | "cuentas-activas" | "informes" | "objetivos" | "contabilidad" | "payouts"
   const [analisisOpen, setAnalisisOpen] = useState(true);
   const [contabilidadOpen, setContabilidadOpen] = useState(false);
-  const [contabilidadEmpresa, setContabilidadEmpresa] = useState("GENERAL");
+  // Filtro global de periodo y empresa: lo comparten Contabilidad y Payouts (barra FiltroPeriodo).
+  // { modo, anio, mes, trimestre, empresa }; arranca en el año en curso y se pierde al recargar.
+  const [filtroFondeo, setFiltroFondeo] = useState(() => filtroInicial());
+  const contabilidadEmpresa = filtroFondeo.empresa; // "GENERAL" = todas: es también el subapartado activo del menú
+  const setContabilidadEmpresa = useCallback((empresa) => setFiltroFondeo((f) => ({ ...f, empresa })), []);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -537,9 +542,9 @@ export default function AppShell({ session, onLogout }) {
         ) : page === "objetivos" ? (
           <Objetivos session={session} />
         ) : page === "payouts" ? (
-          <Payouts session={session} empresas={nombresEmpresas} />
+          <Payouts session={session} empresas={nombresEmpresas} filtro={filtroFondeo} onFiltroCambio={setFiltroFondeo} />
         ) : (
-          <Contabilidad session={session} empresas={nombresEmpresas} activeTab={contabilidadEmpresa} onActiveTabChange={setContabilidadEmpresa} />
+          <Contabilidad session={session} empresas={nombresEmpresas} filtro={filtroFondeo} onFiltroCambio={setFiltroFondeo} />
         )}
       </main>
 

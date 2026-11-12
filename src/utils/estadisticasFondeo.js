@@ -18,6 +18,16 @@ export function enRango(fecha, rango) {
   return (!desde || dia >= desde) && (!hasta || dia <= hasta);
 }
 
+export const normEmpresa = (p) => (p || "").trim().toUpperCase();
+
+// Empresa de un retiro, normalizada: su `proveedor` o, si no lo tiene, el de la compra de esa
+// cuenta (`cuentas_compradas`). Es el criterio de Contabilidad; Payouts filtra con el mismo.
+export function empresaDeRetiro(retiro, compras = []) {
+  if (retiro?.proveedor) return normEmpresa(retiro.proveedor);
+  const compra = compras.find((c) => c.cuenta === retiro?.cuenta);
+  return compra ? normEmpresa(compra.proveedor) : "";
+}
+
 // Una cuenta es evaluación solo si su tipo es "evaluacion"; cualquier otro valor es funded
 // (el mismo criterio que Cuentas activas).
 export const esEvaluacion = (cuenta) => cuenta?.tipo === "evaluacion";

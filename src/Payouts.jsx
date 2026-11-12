@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Plus, X, Trash2, Pencil, HandCoins, ImagePlus, ChevronLeft, ChevronRight, Maximize2, Loader2 } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { supabase, conReintento } from "./supabaseClient";
-import { resumenPayouts, curvaCobrado, repartoPorEmpresa } from "./utils/estadisticasFondeo";
+import { resumenPayouts, curvaCobrado, repartoPorEmpresa, enRango, empresaDeRetiro, normEmpresa } from "./utils/estadisticasFondeo";
+import { TODAS_EMPRESAS, hoyIso, rangoDeFiltro, etiquetaFiltro, aniosDisponibles } from "./utils/periodo";
+import FiltroPeriodo from "./FiltroPeriodo";
 
 const TABLA_RETIROS = "retiros"; // fuente de verdad del cobro: la comparten Contabilidad y Cuentas activas
 const TABLA_PAYOUTS = "payouts"; // solo la captura de cada retiro
@@ -92,7 +94,8 @@ const formVacio = () => ({ cuenta: "", empresa: "", importe: "", importeUsd: "",
 const OTRA = "__otra__"; // valor del desplegable para escribir una cuenta que no está en Cuentas activas
 
 // empresas (prop): nombres de las firmas del usuario (tabla empresas_usuario), en su orden. Llegan de AppShell.
-export default function Payouts({ session, empresas: empresasUsuario = [] }) {
+// filtro / onFiltroCambio: filtro global de periodo y empresa (estado de AppShell, barra FiltroPeriodo).
+export default function Payouts({ session, empresas: empresasUsuario = [], filtro, onFiltroCambio }) {
   const [retiros, setRetiros] = useState([]);
   const [capturas, setCapturas] = useState({}); // { [retiro_id]: { id, imagen_path } }
   const [compras, setCompras] = useState([]); // cuentas_compradas: solo para proponer la empresa de una cuenta
@@ -190,15 +193,27 @@ export default function Payouts({ session, empresas: empresasUsuario = [] }) {
     if (filtroCuenta !== "TODAS" && !cuentas.includes(filtroCuenta)) setFiltroCuenta("TODAS");
   }, [cuentas, filtroCuenta]);
 
-  const lista = useMemo(
-    () => (filtroCuenta === "TODAS" ? filas : filas.filter((f) => f.cuenta === filtroCuenta)),
-    [filas, filtroCuenta]
-  );
+  // Filtro global: periodo (rango de fechas, comparadas como texto) y empresa.
+  const hoyDia = useMemo(() => hoyIso(), []);
+  const rango = useMemo(() => rangoDeFiltro(filtro, hoyDia), [filtro, hoyDia]);
+  const empresaFiltro = filtro.empresa === TODAS_EMPRESAS ? "" : normEmpresa(filtro.empresa);
+  const anios = useMemo(() => aniosDisponibles(retiros.map((r) => r.fecha), filtro, hoyDia), [retiros, filtro, hoyDia]);
 
-  // Los cálculos viven en utils/estadisticasFondeo.js; aquí se aplican a la lista ya filtrada por cuenta.
-  const resumen = useMemo(() => resumenPayouts(lista), [lista]);
-  const curva = useMemo(() => curvaCobrado(lista), [lista]);
-  const reparto = useMemo(() => repartoPorEmpresa(lista), [lista]);
+  // Filtrada por cuenta y empresa; el periodo se aplica después, con el rango.
+  const listaSinPeriodo = useMemo(
+    () => filas.filter((f) =>
+      (filtroCuenta === "TODAS" || f.cuenta === filtroCuenta) &&
+      (!empresaFiltro || empresaDeRetiro(f, compras) === empresaFiltro)),
+    [filas, filtroCuenta, empresaFiltro, compras]
+  );
+  // Lo que se ve en el muro de capturas: lo mismo que cuentan las estadísticas.
+  const lista = useMemo(() => listaSinPeriodo.filter((f) => enRango(f.fecha, rango)), [listaSinPeriodo, rango]);
+  const hayFiltro = filtro.modo !== "todo" || filtro.empresa !== TODAS_EMPRESAS || filtroCuenta !== "TODAS";
+
+  // Los cálculos viven en utils/estadisticasFondeo.js y reciben el rango del filtro global.
+  const resumen = useMemo(() => resumenPayouts(listaSinPeriodo, rango), [listaSinPeriodo, rango]);
+  const curva = useMemo(() => curvaCobrado(listaSinPeriodo, rango), [listaSinPeriodo, rango]);
+  const reparto = useMemo(() => repartoPorEmpresa(listaSinPeriodo, rango), [listaSinPeriodo, rango]);
   const total = resumen.total;
   const primeraFecha = resumen.primeraFecha;
   const sinCaptura = useMemo(() => lista.filter((f) => !f.captura).length, [lista]);
@@ -592,16 +607,24 @@ export default function Payouts({ session, empresas: empresasUsuario = [] }) {
           </div>
         )}
 
+        {/* FILTRO GLOBAL DE PERIODO Y EMPRESA (compartido con Contabilidad) */}
+        <FiltroPeriodo filtro={filtro} onCambio={onFiltroCambio} empresas={empresas} anios={anios} hoy={hoyDia} />
+
         {/* RESUMEN: TOTAL COBRADO + FILTRO */}
         <div className="po-resumen">
           <div>
             <div className="po-resumen-label">
-              Total cobrado <span>· {filtroCuenta === "TODAS" ? "todas las cuentas" : filtroCuenta}</span>
+              Total cobrado{" "}
+              <span>
+                · {etiquetaFiltro(filtro)}
+                {filtro.empresa !== TODAS_EMPRESAS ? ` · ${filtro.empresa}` : ""}
+                {" · "}{filtroCuenta === "TODAS" ? "todas las cuentas" : filtroCuenta}
+              </span>
             </div>
             <div className="po-total po-mono">{fmtEur(total)}</div>
             <div className="po-resumen-sub">
               {lista.length === 0
-                ? "Sin payouts registrados"
+                ? (filas.length > 0 ? "Sin payouts con este filtro" : "Sin payouts registrados")
                 : `Desde ${fmtDate(primeraFecha, true)}${sinCaptura > 0 ? ` · ${sinCaptura} sin captura` : ""}`}
             </div>
           </div>
@@ -697,6 +720,20 @@ export default function Payouts({ session, empresas: empresasUsuario = [] }) {
             {[0, 1, 2].map((i) => (
               <div key={i} className="po-card"><div className="po-skel" /><div className="po-skel-strip" /></div>
             ))}
+          </div>
+        ) : lista.length === 0 && filas.length > 0 ? (
+          <div className="po-empty">
+            <div className="po-empty-icon"><HandCoins size={24} /></div>
+            <h3>No hay payouts con este filtro</h3>
+            <p>Tienes {filas.length} {filas.length === 1 ? "payout registrado" : "payouts registrados"}, pero ninguno cae en el periodo, la empresa y la cuenta elegidos.</p>
+            {hayFiltro && (
+              <button
+                className="po-btn"
+                onClick={() => { setFiltroCuenta("TODAS"); onFiltroCambio({ ...filtro, modo: "todo", empresa: TODAS_EMPRESAS }); }}
+              >
+                Ver todos
+              </button>
+            )}
           </div>
         ) : lista.length === 0 ? (
           <div className="po-empty">
