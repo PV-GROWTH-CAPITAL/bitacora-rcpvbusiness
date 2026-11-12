@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 import AppShell from "./AppShell";
 import LandingPage from "./LandingPage";
+import { TEXTOS_LEGALES } from "./textosLegales";
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = cargando, null = sin sesión
@@ -15,6 +16,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [aceptaCorreos, setAceptaCorreos] = useState(false); // casilla opcional del registro
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -45,7 +48,14 @@ export default function App() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        // La elección de la casilla viaja en los metadatos del alta: si hay que confirmar el
+        // correo todavía no hay sesión, así que la fila de `perfiles` se crea en el primer
+        // acceso leyendo este dato (src/perfil.js).
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { acepta_correos: aceptaCorreos } },
+        });
         // Si el error es "ya existe una cuenta con este correo", no lo tratamos
         // como un error normal: mostramos el mismo mensaje neutro que si el
         // registro fuera nuevo, para no revelar a quien prueba correos al azar
@@ -302,6 +312,18 @@ export default function App() {
             </div>
           )}
 
+          {mode === "signup" && (
+            <label style={casillaStyle}>
+              <input
+                type="checkbox"
+                checked={aceptaCorreos}
+                onChange={(e) => setAceptaCorreos(e.target.checked)}
+                style={{ marginTop: 2, accentColor: "#C9A23F", flexShrink: 0 }}
+              />
+              <span>Quiero recibir por correo novedades de la Bitácora y contenido de RCPV Business</span>
+            </label>
+          )}
+
           <button type="submit" disabled={busy} style={primaryBtnStyle}>
             {busy ? "Procesando..." : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
           </button>
@@ -310,7 +332,7 @@ export default function App() {
             {mode === "login" ? (
               <>
                 ¿No tienes cuenta?{" "}
-                <button type="button" onClick={() => { setMode("signup"); limpiarMensajes(); }} style={linkBtnStyle}>
+                <button type="button" onClick={() => { setMode("signup"); setAceptaCorreos(false); limpiarMensajes(); }} style={linkBtnStyle}>
                   Regístrate
                 </button>
               </>
@@ -429,24 +451,20 @@ const infoBoxStyle = {
   marginBottom: 8,
 };
 
+const casillaStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: 8,
+  marginTop: 14,
+  fontSize: 12.5,
+  lineHeight: 1.45,
+  color: "#B7BFCB",
+  fontFamily: "IBM Plex Sans, sans-serif",
+  cursor: "pointer",
+};
+
 function LegalModal({ tema, onClose }) {
-  const contenido = {
-    aviso: {
-      titulo: "Aviso legal",
-      texto:
-        "Texto de ejemplo pendiente de completar con los datos reales de tu empresa: razón social, NIF/CIF, domicilio, datos de contacto y, si aplica, datos de inscripción registral. Sustitúyelo por tu información real antes de publicarlo — idealmente revisado por un profesional.",
-    },
-    privacidad: {
-      titulo: "Política de privacidad",
-      texto:
-        "Texto de ejemplo pendiente de completar: qué datos personales recoges (correo, operaciones que registra el usuario), con qué finalidad los tratas, la base legal, cuánto tiempo los conservas y cómo puede alguien ejercer sus derechos de acceso, rectificación o supresión. Sustitúyelo por tu política real antes de publicarlo.",
-    },
-    cookies: {
-      titulo: "Política de cookies",
-      texto:
-        "Texto de ejemplo pendiente de completar: qué cookies usa la web (por ejemplo, las técnicas de sesión que gestiona Supabase Auth) y si hay cookies de analítica o de terceros. Sustitúyelo por tu política real antes de publicarlo.",
-    },
-  }[tema] || { titulo: "Información legal", texto: "Contenido pendiente de redactar." };
+  const contenido = TEXTOS_LEGALES[tema] || { titulo: "Información legal", parrafos: [] };
 
   return (
     <div style={legalBackdropStyle} onClick={onClose}>
@@ -461,7 +479,11 @@ function LegalModal({ tema, onClose }) {
           </button>
         </div>
         <div style={{ color: "#B7BFCB", fontSize: 13.5, lineHeight: 1.7, fontFamily: "IBM Plex Sans, sans-serif" }}>
-          {contenido.texto}
+          {(contenido.parrafos || []).map((p, i) => (
+            <p key={p.titulo} style={{ margin: i === 0 ? 0 : "14px 0 0" }}>
+              <strong style={{ color: "#ECEFF3" }}>{p.titulo}</strong> {p.texto}
+            </p>
+          ))}
         </div>
       </div>
     </div>
@@ -481,7 +503,7 @@ const legalBackdropStyle = {
 
 const legalCardStyle = {
   width: "100%",
-  maxWidth: 460,
+  maxWidth: 640,
   background: "linear-gradient(180deg, #171D28, #12161F)",
   border: "1px solid #262C39",
   borderRadius: 14,

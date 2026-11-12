@@ -23,6 +23,7 @@ const TABLAS = [
   "configuracion",
   "inversiones_desgravables",
   "empresas_usuario",
+  "perfiles",
 ];
 
 const PAGINA = 1000;
