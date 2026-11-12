@@ -5,6 +5,11 @@ import { supabase, conReintento } from "./supabaseClient";
 import { resumenPayouts, curvaCobrado, repartoPorEmpresa, enRango, empresaDeRetiro, normEmpresa } from "./utils/estadisticasFondeo";
 import { TODAS_EMPRESAS, hoyIso, rangoDeFiltro, etiquetaFiltro, aniosDisponibles } from "./utils/periodo";
 import FiltroPeriodo from "./FiltroPeriodo";
+import { enmascarar } from "./utils/importes";
+
+// Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
+function fmtEur(...a) { return enmascarar(fmtEurBase(...a)); }
+function fmtEurEje(...a) { return enmascarar(fmtEurEjeBase(...a)); }
 
 const TABLA_RETIROS = "retiros"; // fuente de verdad del cobro: la comparten Contabilidad y Cuentas activas
 const TABLA_PAYOUTS = "payouts"; // solo la captura de cada retiro
@@ -15,7 +20,7 @@ const TIPOS_OK = ["image/webp", "image/jpeg", "image/png"];
 const EXTENSION = { "image/webp": "webp", "image/jpeg": "jpg", "image/png": "png" };
 
 const fmtEurNum = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: "always" });
-function fmtEur(n) {
+function fmtEurBase(n) {
   return `${fmtEurNum.format(Number(n) || 0)} €`;
 }
 
@@ -32,7 +37,7 @@ function fmtDateCorta(d) {
   return isNaN(dt) ? d : dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
-const fmtEurEje = (v) => `${Number(v).toLocaleString("es-ES", { maximumFractionDigits: 0 })} €`;
+const fmtEurEjeBase = (v) => `${Number(v).toLocaleString("es-ES", { maximumFractionDigits: 0 })} €`;
 const fmtPct = (n) => `${n.toLocaleString("es-ES", { maximumFractionDigits: 1 })} %`;
 
 function todayIsoLocal() {
@@ -621,7 +626,7 @@ export default function Payouts({ session, empresas: empresasUsuario = [], filtr
                 {" · "}{filtroCuenta === "TODAS" ? "todas las cuentas" : filtroCuenta}
               </span>
             </div>
-            <div className="po-total po-mono">{fmtEur(total)}</div>
+            <div className="po-total po-mono"><span className="importe">{fmtEur(total)}</span></div>
             <div className="po-resumen-sub">
               {lista.length === 0
                 ? (filas.length > 0 ? "Sin payouts con este filtro" : "Sin payouts registrados")
@@ -641,12 +646,12 @@ export default function Payouts({ session, empresas: empresasUsuario = [], filtr
             <div className="po-stats">
               <div className="po-stat">
                 <div className="po-stat-label">Payout medio</div>
-                <div className="po-stat-valor po-mono">{fmtEur(resumen.medio)}</div>
+                <div className="po-stat-valor po-mono"><span className="importe">{fmtEur(resumen.medio)}</span></div>
                 <div className="po-stat-sub">bruto por cobro</div>
               </div>
               <div className="po-stat">
                 <div className="po-stat-label">Mejor payout</div>
-                <div className="po-stat-valor po-mono">{fmtEur(resumen.mejor?.monto)}</div>
+                <div className="po-stat-valor po-mono"><span className="importe">{fmtEur(resumen.mejor?.monto)}</span></div>
                 <div className="po-stat-sub">{[resumen.mejor?.cuenta, fmtDateCorta(resumen.mejor?.fecha)].filter(Boolean).join(" · ")}</div>
               </div>
               <div className="po-stat">
@@ -703,7 +708,7 @@ export default function Payouts({ session, empresas: empresasUsuario = [], filtr
                   <div key={e.empresa} className="po-reparto-fila">
                     <div className="po-reparto-cab">
                       <span className="po-reparto-nombre" title={e.empresa}>{e.empresa}</span>
-                      <span className="po-mono po-reparto-importe">{fmtEur(e.total)}</span>
+                      <span className="po-mono po-reparto-importe"><span className="importe">{fmtEur(e.total)}</span></span>
                     </div>
                     <div className="po-reparto-barra"><div style={{ width: `${e.pct}%` }} /></div>
                     <div className="po-reparto-sub po-mono">{fmtPct(e.pct)} · {e.numero} {e.numero === 1 ? "payout" : "payouts"}</div>
@@ -751,7 +756,7 @@ export default function Payouts({ session, empresas: empresasUsuario = [], filtr
                   {f.captura ? (
                     <button className="po-shot" onClick={() => setVisorId(f.id)} aria-label={`Ver captura de ${f.cuenta} a pantalla completa`}>
                       {url ? (
-                        <img src={url} alt={`Payout ${f.cuenta} ${fmtEur(f.monto)}`} loading="lazy" onLoad={(e) => e.currentTarget.classList.add("on")} />
+                        <img className="captura-importe" src={url} alt={`Payout ${f.cuenta} ${fmtEur(f.monto)}`} loading="lazy" onLoad={(e) => e.currentTarget.classList.add("on")} />
                       ) : (
                         <span className="po-shot-ph"><ImagePlus size={28} /></span>
                       )}
@@ -772,7 +777,7 @@ export default function Payouts({ session, empresas: empresasUsuario = [], filtr
                       <button className="po-icon-btn" onClick={() => abrirEditar(f)} aria-label="Editar payout" title="Editar"><Pencil size={13} /></button>
                       <button className="po-icon-btn danger" onClick={() => borrar(f)} aria-label="Borrar payout" title="Borrar"><Trash2 size={13} /></button>
                     </span>
-                    <span className="po-strip-importe po-mono">{fmtEur(f.monto)}</span>
+                    <span className="po-strip-importe po-mono"><span className="importe">{fmtEur(f.monto)}</span></span>
                   </div>
                 </article>
               );
@@ -806,13 +811,13 @@ export default function Payouts({ session, empresas: empresasUsuario = [], filtr
           )}
           <div className="po-visor-stage">
             {urls[visor.captura.imagen_path] && (
-              <img src={urls[visor.captura.imagen_path]} alt={`Payout ${visor.cuenta} ${fmtEur(visor.monto)}`} onClick={(e) => e.stopPropagation()} />
+              <img className="captura-importe" src={urls[visor.captura.imagen_path]} alt={`Payout ${visor.cuenta} ${fmtEur(visor.monto)}`} onClick={(e) => e.stopPropagation()} />
             )}
           </div>
           <div className="po-visor-foot" onClick={(e) => e.stopPropagation()}>
             <b>{visor.cuenta || "Sin cuenta"}</b>
             <span className="sep" />
-            <span className="imp po-mono">{fmtEur(visor.monto)}</span>
+            <span className="imp po-mono"><span className="importe">{fmtEur(visor.monto)}</span></span>
             <span className="sep" />
             <span className="po-mono">{fmtDate(visor.fecha, true)}</span>
             {conCaptura.length > 1 && (
@@ -854,7 +859,7 @@ export default function Payouts({ session, empresas: empresasUsuario = [], filtr
                   <><Loader2 size={22} className="po-spin" /> Optimizando imagen…</>
                 ) : previewModal ? (
                   <>
-                    <img src={previewModal} alt="Vista previa de la captura" />
+                    <img className="captura-importe" src={previewModal} alt="Vista previa de la captura" />
                     <span className="po-drop-cambiar">Cambiar imagen</span>
                   </>
                 ) : (

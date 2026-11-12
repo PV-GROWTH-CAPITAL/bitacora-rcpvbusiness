@@ -273,7 +273,7 @@ export default function OperativaImagen({ fecha, trades, onClose }) {
           <>
             <div
               ref={previewRef}
-              className="oi-preview"
+              className="oi-preview captura-importe"
               style={{ maxWidth: ANCHO_PREVIEW[formato], height: escala ? height * escala : undefined }}
             >
               <div className="oi-escenario" style={{ width, height, transform: `scale(${escala})` }}>
@@ -318,7 +318,7 @@ export default function OperativaImagen({ fecha, trades, onClose }) {
             </button>
             {errorExport && <div className="oi-error">{errorExport}</div>}
 
-            <div className="oi-tabla-wrap">
+            <div className="oi-tabla-wrap captura-importe">
               <table className="oi-tabla">
                 <thead>
                   <tr>
@@ -346,7 +346,7 @@ export default function OperativaImagen({ fecha, trades, onClose }) {
                 </tbody>
               </table>
             </div>
-            <div className="oi-resumen">
+            <div className="oi-resumen captura-importe">
               <span className="oi-resumen-label">RESULTADO ({modo === "dolares" ? "$" : "%"})</span>
               <span>
                 {detalleTotal(calc)} → <strong>{textoPlano(calc.total)}</strong>

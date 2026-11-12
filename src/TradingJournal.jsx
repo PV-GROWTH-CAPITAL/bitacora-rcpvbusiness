@@ -32,10 +32,14 @@ import OperativaImagen from "./OperativaImagen";
 import ImportarOperaciones from "./ImportarOperaciones";
 import { rutaDeCaptura, useUrlCaptura } from "./capturasUrls";
 import { DIAS_SEMANA, celdasMes } from "./utils/calendario";
+import { enmascarar } from "./utils/importes";
+
+// Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
+function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
 
 const TABLE = "trades";
 
-function fmtMoney(n) {
+function fmtMoneyBase(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "\u2212" : "";
   return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
@@ -142,7 +146,7 @@ function CapturaTrade({ valor }) {
   const url = useUrlCaptura(valor);
   return (
     <a href={url || undefined} target="_blank" rel="noopener noreferrer" className="jt-captura-thumb-link">
-      <img src={url || undefined} alt="Captura de la operación" className="jt-captura-thumb" />
+      <img src={url || undefined} alt="Captura de la operación" className="jt-captura-thumb captura-importe" />
     </a>
   );
 }
@@ -1177,7 +1181,7 @@ export default function TradingJournal({ session }) {
           <div className="jt-ticker-track">
             {[...tickerTrades, ...tickerTrades].map((t, i) => (
               <span key={i} className={`jt-pill ${Number(t.resultado) >= 0 ? "win" : "loss"}`}>
-                {t.instrumento} &middot; {fmtMoney(t.resultado)}
+                {t.instrumento} &middot; <span className="importe">{fmtMoney(t.resultado)}</span>
               </span>
             ))}
           </div>
@@ -1198,7 +1202,7 @@ export default function TradingJournal({ session }) {
             <span className="jt-mono jt-risk-label">Riesgo máx/día</span>
             <span className="jt-mono jt-risk-dollar">$</span>
             <input
-              className="jt-mono"
+              className="jt-mono importe-campo"
               type="number"
               min="0"
               step="1"
@@ -1241,7 +1245,7 @@ export default function TradingJournal({ session }) {
           <div className="jt-stat-card">
             <div className="jt-stat-label">P&amp;L total</div>
             <div className={`jt-stat-value jt-mono ${stats.totalPnl >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-              {fmtMoney(stats.totalPnl)}
+              <span className="importe">{fmtMoney(stats.totalPnl)}</span>
             </div>
           </div>
           <div className="jt-stat-card">
@@ -1280,14 +1284,14 @@ export default function TradingJournal({ session }) {
             <div className="jt-analysis-card">
               <div className="jt-stat-label">Día más rentable</div>
               <div className={`jt-stat-value jt-mono ${analisis.mostProfitableDay && analisis.mostProfitableDay.total >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                {analisis.mostProfitableDay ? fmtMoney(analisis.mostProfitableDay.total) : "\u2014"}
+                {analisis.mostProfitableDay ? <span className="importe">{fmtMoney(analisis.mostProfitableDay.total)}</span> : "\u2014"}
               </div>
               <div className="jt-analysis-sub jt-mono">{analisis.mostProfitableDay ? analisis.mostProfitableDay.label : ""}</div>
             </div>
             <div className="jt-analysis-card">
               <div className="jt-stat-label">Día menos rentable</div>
               <div className={`jt-stat-value jt-mono ${analisis.leastProfitableDay && analisis.leastProfitableDay.total >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                {analisis.leastProfitableDay ? fmtMoney(analisis.leastProfitableDay.total) : "\u2014"}
+                {analisis.leastProfitableDay ? <span className="importe">{fmtMoney(analisis.leastProfitableDay.total)}</span> : "\u2014"}
               </div>
               <div className="jt-analysis-sub jt-mono">{analisis.leastProfitableDay ? analisis.leastProfitableDay.label : ""}</div>
             </div>
@@ -1316,23 +1320,23 @@ export default function TradingJournal({ session }) {
 
             <div className="jt-analysis-card">
               <div className="jt-stat-label">Promedio ganancia</div>
-              <div className="jt-stat-value jt-mono jt-pnl-win">{fmtMoney(stats.avgWin)}</div>
+              <div className="jt-stat-value jt-mono jt-pnl-win"><span className="importe">{fmtMoney(stats.avgWin)}</span></div>
             </div>
             <div className="jt-analysis-card">
               <div className="jt-stat-label">Promedio pérdida</div>
-              <div className="jt-stat-value jt-mono jt-pnl-loss">{fmtMoney(-stats.avgLoss)}</div>
+              <div className="jt-stat-value jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-stats.avgLoss)}</span></div>
             </div>
             <div className="jt-analysis-card">
               <div className="jt-stat-label">Mejor operación</div>
               <div className="jt-stat-value jt-mono jt-pnl-win">
-                {analisis.bestTrade ? fmtMoney(analisis.bestTrade.resultado) : "N/D"}
+                {analisis.bestTrade ? <span className="importe">{fmtMoney(analisis.bestTrade.resultado)}</span> : "N/D"}
               </div>
               <div className="jt-analysis-sub jt-mono">{analisis.bestTrade ? fmtDate(analisis.bestTrade.fecha) : ""}</div>
             </div>
             <div className="jt-analysis-card">
               <div className="jt-stat-label">Peor operación</div>
               <div className="jt-stat-value jt-mono jt-pnl-loss">
-                {analisis.worstTrade ? fmtMoney(analisis.worstTrade.resultado) : "N/D"}
+                {analisis.worstTrade ? <span className="importe">{fmtMoney(analisis.worstTrade.resultado)}</span> : "N/D"}
               </div>
               <div className="jt-analysis-sub jt-mono">{analisis.worstTrade ? fmtDate(analisis.worstTrade.fecha) : ""}</div>
             </div>
@@ -1401,7 +1405,7 @@ export default function TradingJournal({ session }) {
                   <CartesianGrid stroke="#262C39" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="idx" stroke="#8891A1" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} />
                   <YAxis stroke="#8891A1" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} width={70}
-                    tickFormatter={(v) => `${v.toLocaleString("es-ES")} $`} />
+                    tickFormatter={(v) => enmascarar(`${v.toLocaleString("es-ES")} $`)} />
                   <ReferenceLine y={0} stroke="#262C39" />
                   <Tooltip
                     contentStyle={{ background: "#171D28", border: "1px solid #262C39", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }}
@@ -1441,7 +1445,7 @@ export default function TradingJournal({ session }) {
                 </div>
               )}
               <div className={`jt-cal-total jt-mono ${monthTotal >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                Total del mes: {fmtMoney(monthTotal)}
+                Total del mes: <span className="importe">{fmtMoney(monthTotal)}</span>
               </div>
             </div>
           </div>
@@ -1463,13 +1467,13 @@ export default function TradingJournal({ session }) {
                   className={`jt-cal-cell ${cell.data ? (cell.data.total > 0 ? "cal-win" : cell.data.total < 0 ? "cal-loss" : "cal-flat") : ""} ${cell.iso === todayIso ? "today" : ""} ${selectedDays.includes(cell.iso) ? "selected" : ""} ${riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? "risk-exceeded" : ""}`}
                   onClick={() => seleccionarDia(cell.iso)}
                   onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && seleccionarDia(cell.iso)}
-                  title={riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? `Superaste tu riesgo máximo de ${riesgoMaximo} $/día` : undefined}
+                  title={riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? enmascarar(`Superaste tu riesgo máximo de ${riesgoMaximo} $/día`) : undefined}
                 >
                   <div className="jt-cal-daynum">{cell.day}</div>
                   {cell.data && (
                     <>
                       <div className="jt-cal-amount">
-                        {fmtMoney(cell.data.total)}
+                        <span className="importe">{fmtMoney(cell.data.total)}</span>
                       </div>
                       <div className="jt-cal-count">{cell.data.count} op.{cell.data.count > 1 ? "s" : ""}</div>
                     </>
@@ -1541,7 +1545,7 @@ export default function TradingJournal({ session }) {
                         <td className="jt-mono">{fmtLotes(t.contratos)}</td>
                         <td>{t.estrategia || "\u2014"}</td>
                         <td className={`jt-mono ${Number(t.resultado) >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                          {fmtMoney(t.resultado)}
+                          <span className="importe">{fmtMoney(t.resultado)}</span>
                         </td>
                         <td>
                           <div className="jt-row-actions">
@@ -1742,7 +1746,7 @@ export default function TradingJournal({ session }) {
                       return (
                         <div className="jt-acc-total">
                           <span>Total en {cuentasSel.length} cuentas</span>
-                          <span className={`jt-mono ${total > 0 ? "win" : total < 0 ? "loss" : ""}`}>{fmtMoney(total)}</span>
+                          <span className={`jt-mono ${total > 0 ? "win" : total < 0 ? "loss" : ""}`}><span className="importe">{fmtMoney(total)}</span></span>
                         </div>
                       );
                     })()}
@@ -1755,7 +1759,7 @@ export default function TradingJournal({ session }) {
               <label>Captura de la operación (opcional)</label>
               {capturaPreview ? (
                 <div className="jt-captura-preview">
-                  <img src={srcVistaPrevia || undefined} alt="Vista previa de la captura" />
+                  <img src={srcVistaPrevia || undefined} alt="Vista previa de la captura" className="captura-importe" />
                   <button type="button" className="jt-btn" onClick={quitarCaptura}>
                     <X size={14} /> Quitar imagen
                   </button>

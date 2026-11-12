@@ -3,6 +3,11 @@ import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { DIAS_SEMANA, celdasMes, semanasMes } from "./utils/calendario";
 import { movimientosPorDia, totalesPorMes } from "./utils/estadisticasFondeo";
 import { MESES_CORTOS, MESES_LARGOS, hoyIso, partesIso } from "./utils/periodo";
+import { enmascarar } from "./utils/importes";
+
+// Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
+function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
+function fmtCorto(...a) { return enmascarar(fmtCortoBase(...a)); }
 
 // Calendario de dinero de Contabilidad: un mes en rejilla (lunes a domingo) con lo cobrado, lo
 // gastado o el neto de cada día, el total por semana y los 12 meses del año.
@@ -20,14 +25,14 @@ const valorDe = (d, modo) => (!d ? 0 : modo === "payouts" ? d.cobrado : modo ===
 const tieneDato = (d, modo) => !!d && (modo === "payouts" ? d.cobrado !== 0 : modo === "gastos" ? d.gastado !== 0 : d.numero > 0);
 const sumar = (valores) => Math.round(valores.reduce((s, v) => s + Math.round(v * 100), 0)) / 100;
 
-function fmtMoney(n) {
+function fmtMoneyBase(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "−" : "";
   return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 }
 
 // Versión corta para las celdas estrechas (móvil): sin decimales ni símbolo, y en miles desde 10.000.
-function fmtCorto(n) {
+function fmtCortoBase(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "−" : "";
   const abs = Math.abs(v);
@@ -161,7 +166,7 @@ export default function CalendarioDinero({ retiros = [], compras = [], inversion
             <button key={m} type="button" className={modo === m ? "on" : ""} aria-pressed={modo === m} onClick={() => setModo(m)}>{label}</button>
           ))}
         </div>
-        <div className={`cd-total jt-mono ${claseSigno(totalMes)}`}>Total del mes: {fmtMoney(totalMes)}</div>
+        <div className={`cd-total jt-mono ${claseSigno(totalMes)}`}>Total del mes: <span className="importe">{fmtMoney(totalMes)}</span></div>
       </div>
 
       {nota && <div className="cd-nota">{nota}</div>}
@@ -189,8 +194,8 @@ export default function CalendarioDinero({ retiros = [], compras = [], inversion
                   {conDato && (
                     <>
                       <div className="cd-importe">
-                        <span className="cd-largo">{fmtMoney(valor)}</span>
-                        <span className="cd-corto">{fmtCorto(valor)}</span>
+                        <span className="cd-largo"><span className="importe">{fmtMoney(valor)}</span></span>
+                        <span className="cd-corto"><span className="importe">{fmtCorto(valor)}</span></span>
                       </div>
                       <div className="cd-num">{d.numero} mov.</div>
                     </>
@@ -200,7 +205,7 @@ export default function CalendarioDinero({ retiros = [], compras = [], inversion
             })}
             <div className="cd-sem">
               <span className="cd-sem-lab">Sem. {fila.n}</span>
-              <span className={`cd-sem-val ${fila.conDatos ? claseSigno(fila.total) : "nada"}`}>{fila.conDatos ? fmtMoney(fila.total) : "—"}</span>
+              <span className={`cd-sem-val importe ${fila.conDatos ? claseSigno(fila.total) : "nada"}`}>{fila.conDatos ? fmtMoney(fila.total) : "—"}</span>
             </div>
           </React.Fragment>
         ))}
@@ -211,7 +216,7 @@ export default function CalendarioDinero({ retiros = [], compras = [], inversion
         {filas.map((fila) => (
           <div key={fila.n}>
             <span>Sem. {fila.n} · {fila.rango}</span>
-            <b className={fila.conDatos ? claseSigno(fila.total) : ""}>{fila.conDatos ? fmtMoney(fila.total) : "—"}</b>
+            <b className={fila.conDatos ? claseSigno(fila.total) : ""}>{fila.conDatos ? <span className="importe">{fmtMoney(fila.total)}</span> : "—"}</b>
           </div>
         ))}
       </div>
@@ -219,7 +224,7 @@ export default function CalendarioDinero({ retiros = [], compras = [], inversion
       <div className="cd-anio">
         <div className="cd-anio-head">
           <span>{vista.anio} · {etiquetaModo} por mes</span>
-          <span className={`jt-mono ${claseSigno(totalAnio)}`}>Total {vista.anio}: {fmtMoney(totalAnio)}</span>
+          <span className={`jt-mono ${claseSigno(totalAnio)}`}>Total {vista.anio}: <span className="importe">{fmtMoney(totalAnio)}</span></span>
         </div>
         <div className="cd-meses">
           {meses.map((m) => {
@@ -233,7 +238,7 @@ export default function CalendarioDinero({ retiros = [], compras = [], inversion
                 onClick={() => setVista((v) => ({ ...v, mes: m.mes }))}
               >
                 <span className="cd-mesbtn-lab">{MESES_CORTOS[m.mes - 1]}</span>
-                <span className={`cd-mesbtn-val ${conDato ? claseSigno(valor) : "nada"}`}>{conDato ? fmtMoney(valor) : "—"}</span>
+                <span className={`cd-mesbtn-val importe ${conDato ? claseSigno(valor) : "nada"}`}>{conDato ? fmtMoney(valor) : "—"}</span>
               </button>
             );
           })}

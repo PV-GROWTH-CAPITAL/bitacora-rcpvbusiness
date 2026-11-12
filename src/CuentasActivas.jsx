@@ -23,6 +23,14 @@ import {
   RIESGO_MINIMO_POR_DEFECTO,
 } from "./calculoCuentas";
 import { calcularFundingRatio } from "./utils/estadisticasFondeo";
+import { enmascarar } from "./utils/importes";
+
+// Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
+function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
+function fmtUsd(...a) { return enmascarar(fmtUsdBase(...a)); }
+function fmtUsdEntero(...a) { return enmascarar(fmtUsdEnteroBase(...a)); }
+function fmtEur(...a) { return enmascarar(fmtEurBase(...a)); }
+function fmtUsdRegla(...a) { return enmascarar(fmtUsdReglaBase(...a)); }
 
 const CUENTAS_TABLE = "cuentas";
 const TRADES_TABLE = "trades";
@@ -47,26 +55,26 @@ const MOTIVOS_CIERRE = [
 const NUM_FMT = { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: "always" };
 
 // P&L: con signo.
-function fmtMoney(n) {
+function fmtMoneyBase(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "−" : "";
   return `${sign}${Math.abs(v).toLocaleString("es-ES", NUM_FMT)} $`;
 }
 
 // Balances y niveles: sin "+".
-function fmtUsd(n) {
+function fmtUsdBase(n) {
   const v = Number(n) || 0;
   return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("es-ES", NUM_FMT)} $`;
 }
 
 // Cifras grandes de la tarjeta: redondeadas a dólares enteros (50.900 $).
-function fmtUsdEntero(n) {
+function fmtUsdEnteroBase(n) {
   const v = Math.round(Number(n) || 0);
   return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("es-ES", { maximumFractionDigits: 0, useGrouping: "always" })} $`;
 }
 
 // Importes de Contabilidad (lo recibido en € de un retiro).
-function fmtEur(n) {
+function fmtEurBase(n) {
   const v = Number(n) || 0;
   return `${v < 0 ? "\u2212" : ""}${Math.abs(v).toLocaleString("es-ES", NUM_FMT)} €`;
 }
@@ -79,7 +87,7 @@ function fmtPct(n) {
 }
 
 // Importes de reglas (ej. "150 $"): sin decimales si son enteros.
-function fmtUsdRegla(n) {
+function fmtUsdReglaBase(n) {
   const v = Number(n) || 0;
   return Number.isInteger(v) ? `${v.toLocaleString("es-ES", { useGrouping: "always" })} $` : fmtUsd(v);
 }
@@ -565,16 +573,16 @@ export default function CuentasActivas({ session }) {
         <div className="cta-kpis">
           <div className="cta-kpi">
             <div className="cta-row-label">Balance actual</div>
-            <div className="cta-kpi-valor cta-mono" title={fmtUsd(dd.balanceActual)}>{fmtUsdEntero(dd.balanceActual)}</div>
+            <div className="cta-kpi-valor cta-mono" title={fmtUsd(dd.balanceActual)}><span className="importe">{fmtUsdEntero(dd.balanceActual)}</span></div>
           </div>
           <div className="cta-kpi">
             <div className="cta-row-label">Margen hasta el DD</div>
-            <div className="cta-kpi-valor cta-mono" style={{ color }} title={fmtUsd(dd.margen)}>{fmtUsdEntero(dd.margen)}</div>
+            <div className="cta-kpi-valor cta-mono" style={{ color }} title={fmtUsd(dd.margen)}><span className="importe">{fmtUsdEntero(dd.margen)}</span></div>
             {dd.margenDelPanel && <span className="cta-tag-panel" title={`Calculado con el Journal: ${fmtUsd(dd.margenCalculado)}`}>dato del panel</span>}
           </div>
           <div className="cta-kpi">
             <div className="cta-row-label">Riesgo máx. por trade</div>
-            <div className="cta-kpi-valor cta-mono" style={{ color: colorRiesgo }} title={riesgo.sinMargen ? undefined : fmtUsd(riesgo.riesgo)}>
+            <div className="cta-kpi-valor cta-mono importe" style={{ color: colorRiesgo }} title={riesgo.sinMargen ? undefined : fmtUsd(riesgo.riesgo)}>
               {riesgo.sinMargen ? "—" : fmtUsdEntero(riesgo.riesgo)}
             </div>
           </div>
@@ -587,11 +595,11 @@ export default function CuentasActivas({ session }) {
         {!riesgo.sinMargen && (
           <div className="cta-riesgo">
             <div className="cta-block-sub">
-              Riesgo: {fmtPctSimple(riesgo.pct)} del margen, mínimo {fmtUsdRegla(riesgo.minimo)}
+              Riesgo: {fmtPctSimple(riesgo.pct)} del margen, mínimo <span className="importe">{fmtUsdRegla(riesgo.minimo)}</span>
               {riesgo.limitadoPor === "dd_diario" && " · limitado por el DD diario que queda hoy"}
             </div>
             {riesgo.aviso === "rojo" && (
-              <div className="cta-aviso cta-aviso-rojo">Un stop quema la cuenta: el margen no llega al riesgo mínimo de {fmtUsdRegla(riesgo.minimo)}.</div>
+              <div className="cta-aviso cta-aviso-rojo">Un stop quema la cuenta: el margen no llega al riesgo mínimo de <span className="importe">{fmtUsdRegla(riesgo.minimo)}</span>.</div>
             )}
             {riesgo.aviso === "ambar" && (
               <div className="cta-aviso">Con el mínimo arriesgas el {fmtPctSimple(riesgo.pctDelMargen)} del margen.</div>
@@ -604,17 +612,17 @@ export default function CuentasActivas({ session }) {
             <span className="cta-row-label">DD máximo</span>
             <span className="cta-mono">
               {dd.fijado && <span title="Fijado: ya no sube">🔒 </span>}
-              {fmtUsd(dd.suelo)}
+              <span className="importe">{fmtUsd(dd.suelo)}</span>
             </span>
           </div>
           <div className="cta-row">
             <span className="cta-row-label">P&L total</span>
-            <span className="cta-mono" style={{ color: pnlColor(c.pnlTotal) }}>{fmtMoney(c.pnlTotal)}</span>
+            <span className="cta-mono" style={{ color: pnlColor(c.pnlTotal) }}><span className="importe">{fmtMoney(c.pnlTotal)}</span></span>
           </div>
           {target && (
             <div className="cta-row">
-              <span className="cta-row-label">Hasta el target ({fmtUsd(target.objetivo)})</span>
-              <span className="cta-mono" style={{ color: target.alcanzado ? "var(--win)" : "var(--text)" }}>
+              <span className="cta-row-label">Hasta el target (<span className="importe">{fmtUsd(target.objetivo)}</span>)</span>
+              <span className="cta-mono importe" style={{ color: target.alcanzado ? "var(--win)" : "var(--text)" }}>
                 {target.alcanzado ? "✓ Alcanzado" : fmtUsd(target.restante)}
               </span>
             </div>
@@ -647,7 +655,7 @@ export default function CuentasActivas({ session }) {
           </div>
           {dd.margenDelPanel && (
             <div className="cta-block-sub">
-              Hoy se usa el dato del panel. Calculado con el Journal: {fmtUsd(dd.margenCalculado)}.{" "}
+              Hoy se usa el dato del panel. Calculado con el Journal: <span className="importe">{fmtUsd(dd.margenCalculado)}</span>.{" "}
               <button className="cta-link" onClick={() => quitarMargenPanel(c)}>Quitar</button>
             </div>
           )}
@@ -662,12 +670,12 @@ export default function CuentasActivas({ session }) {
             {dd.ddTipo !== "estatico" && (
               <div className="cta-row">
                 <span className="cta-row-label">Máx. balance EOD</span>
-                <span className="cta-mono">{fmtUsd(dd.maxEOD)}</span>
+                <span className="cta-mono"><span className="importe">{fmtUsd(dd.maxEOD)}</span></span>
               </div>
             )}
             <div className="cta-row">
               <span className="cta-row-label">{dd.ddTipo === "estatico" ? "DD estático" : "DD trailing EOD"}</span>
-              <span className="cta-mono">
+              <span className="cta-mono importe">
                 {dd.ddTipo === "estatico"
                   ? `${fmtUsd(dd.distancia)} bajo ${fmtUsd(dd.partida)}`
                   : dd.fijado
@@ -679,13 +687,13 @@ export default function CuentasActivas({ session }) {
             </div>
             <div className="cta-row">
               <span className="cta-row-label">Hoy (en curso)</span>
-              <span className="cta-mono" style={{ color: pnlColor(pnlHoy) }}>{fmtMoney(pnlHoy)}</span>
+              <span className="cta-mono" style={{ color: pnlColor(pnlHoy) }}><span className="importe">{fmtMoney(pnlHoy)}</span></span>
             </div>
             {c.ddDiario != null && (
               <div className="cta-row">
-                <span className="cta-row-label">DD diario ({fmtUsd(c.ddDiario)})</span>
+                <span className="cta-row-label">DD diario (<span className="importe">{fmtUsd(c.ddDiario)}</span>)</span>
                 <span className="cta-mono" style={{ color: ddColor(c.ddDiarioUsadoPct) }}>
-                  queda {fmtUsd(c.ddDiarioRestante)}
+                  queda <span className="importe">{fmtUsd(c.ddDiarioRestante)}</span>
                 </span>
               </div>
             )}
@@ -693,8 +701,8 @@ export default function CuentasActivas({ session }) {
             {esFunded && colchon && (
               <div className="cta-block">
                 <div className="cta-block-head">
-                  <span>Colchón para retirar ({fmtUsd(colchon.umbral)})</span>
-                  <span className="cta-mono" style={{ color: colchon.alcanzado ? "var(--win)" : "var(--text)" }}>
+                  <span>Colchón para retirar (<span className="importe">{fmtUsd(colchon.umbral)}</span>)</span>
+                  <span className="cta-mono importe" style={{ color: colchon.alcanzado ? "var(--win)" : "var(--text)" }}>
                     {colchon.alcanzado ? "✓ Puedes retirar" : `faltan ${fmtUsd(colchon.restante)}`}
                   </span>
                 </div>
@@ -702,7 +710,7 @@ export default function CuentasActivas({ session }) {
                   <div className="cta-bar-fill" style={{ width: `${colchon.progreso * 100}%`, background: colchon.alcanzado ? "var(--win)" : "var(--accent)" }} />
                 </div>
                 <div className="cta-block-sub">
-                  Balance de partida {fmtUsd(colchon.partida)} + colchón {fmtUsd(colchon.colchon)}
+                  Balance de partida <span className="importe">{fmtUsd(colchon.partida)}</span> + colchón <span className="importe">{fmtUsd(colchon.colchon)}</span>
                 </div>
               </div>
             )}
@@ -711,7 +719,7 @@ export default function CuentasActivas({ session }) {
               <div className="cta-block">
                 <div className="cta-block-head">
                   <span>
-                    Días rentables (≥ {fmtUsdRegla(minPnlDia)}){ultimoRetiro ? ` desde el retiro del ${fmtDate(ultimoRetiro)}` : ""}
+                    Días rentables (≥ <span className="importe">{fmtUsdRegla(minPnlDia)}</span>){ultimoRetiro ? ` desde el retiro del ${fmtDate(ultimoRetiro)}` : ""}
                   </span>
                   <span className="cta-mono" style={{ color: dias >= diasObjetivo ? "var(--win)" : "var(--text)" }}>
                     {Math.min(dias, diasObjetivo)}/{diasObjetivo}{dias >= diasObjetivo ? " ✓" : ""}
@@ -721,7 +729,7 @@ export default function CuentasActivas({ session }) {
                   {Array.from({ length: diasObjetivo }, (_, i) => (
                     <span key={i} className={`cta-dot ${i < dias ? "on" : ""}`} />
                   ))}
-                  {pnlHoy > 0 && <span className="cta-hoy-curso cta-mono">hoy en curso: {fmtMoney(pnlHoy)}</span>}
+                  {pnlHoy > 0 && <span className="cta-hoy-curso cta-mono">hoy en curso: <span className="importe">{fmtMoney(pnlHoy)}</span></span>}
                 </div>
               </div>
             )}
@@ -742,9 +750,9 @@ export default function CuentasActivas({ session }) {
                 </div>
                 {consistencia.cumple != null && (
                   <div className="cta-block-sub">
-                    Mejor día {fmtMoney(consistencia.mejorDia)} ({fmtDate(consistencia.mejorFecha)}) de {fmtMoney(consistencia.total)} de beneficio.
+                    Mejor día <span className="importe">{fmtMoney(consistencia.mejorDia)}</span> ({fmtDate(consistencia.mejorFecha)}) de <span className="importe">{fmtMoney(consistencia.total)}</span> de beneficio.
                     {!consistencia.cumple && (
-                      <> Faltan <b className="cta-mono" style={{ color: "var(--text)" }}>{fmtUsd(consistencia.faltaBeneficio)}</b> de beneficio en días que no superen el mejor.</>
+                      <> Faltan <b className="cta-mono" style={{ color: "var(--text)" }}><span className="importe">{fmtUsd(consistencia.faltaBeneficio)}</span></b> de beneficio en días que no superen el mejor.</>
                     )}
                   </div>
                 )}
@@ -755,7 +763,7 @@ export default function CuentasActivas({ session }) {
               <div className="cta-block">
                 <div className="cta-block-head">
                   <span>Retiros</span>
-                  <span className="cta-mono">{fmtUsd(c.totalRetirado)}</span>
+                  <span className="cta-mono"><span className="importe">{fmtUsd(c.totalRetirado)}</span></span>
                 </div>
                 {c.retirosCuenta.length === 0 ? (
                   <div className="cta-block-sub">Sin retiros todavía.</div>
@@ -765,11 +773,11 @@ export default function CuentasActivas({ session }) {
                       <div key={r.id} className="cta-retiro-row">
                         <span className="cta-mono">{fmtDate(r.fecha)}</span>
                         {tieneMontoUsd(r) ? (
-                          <span className="cta-mono" style={{ fontWeight: 600 }}>{fmtUsd(r.monto_usd)}</span>
+                          <span className="cta-mono" style={{ fontWeight: 600 }}><span className="importe">{fmtUsd(r.monto_usd)}</span></span>
                         ) : (
                           <button className="cta-falta-usd" onClick={() => abrirEditarRetiro(r)}>falta $</button>
                         )}
-                        <span className="cta-row-label cta-retiro-prov cta-mono">{fmtEur(r.monto)}</span>
+                        <span className="cta-row-label cta-retiro-prov cta-mono"><span className="importe">{fmtEur(r.monto)}</span></span>
                         <span className="cta-retiro-acciones">
                           <button className="cta-icon-btn" onClick={() => abrirEditarRetiro(r)} title="Editar retiro"><Pencil size={12} /></button>
                           <button className="cta-icon-btn" onClick={() => borrarRetiro(r)} title="Borrar retiro"><Trash2 size={12} /></button>
@@ -822,8 +830,8 @@ export default function CuentasActivas({ session }) {
               <span className="cta-pasada-meta">{fmtDate(c.fecha_cierre)}</span>
             </div>
             <div className="cta-pasada-nums cta-mono">
-              <span>P&L final<b style={{ color: pnlColor(c.pnlTotal) }}>{fmtMoney(c.pnlTotal)}</b></span>
-              <span>Retirado<b style={{ color: "var(--text)" }}>{fmtUsd(c.totalRetirado)}</b></span>
+              <span>P&L final<b style={{ color: pnlColor(c.pnlTotal) }}><span className="importe">{fmtMoney(c.pnlTotal)}</span></b></span>
+              <span>Retirado<b style={{ color: "var(--text)" }}><span className="importe">{fmtUsd(c.totalRetirado)}</span></b></span>
             </div>
             <div className="cta-pasada-actions">
               <button className="cta-btn" onClick={() => reactivar(c)}><RotateCcw size={13} /> Reactivar</button>
@@ -1049,7 +1057,7 @@ export default function CuentasActivas({ session }) {
             <div className="cta-config-line">
               <span className="cta-row-label">Riesgo por trade</span>
               <span className="cta-mono">
-                {fmtPctSimple(riesgoConfig.pctFunded)} funded · {fmtPctSimple(riesgoConfig.pctEval)} evaluación · mín. {fmtUsdRegla(riesgoConfig.minimo)}
+                {fmtPctSimple(riesgoConfig.pctFunded)} funded · {fmtPctSimple(riesgoConfig.pctEval)} evaluación · mín. <span className="importe">{fmtUsdRegla(riesgoConfig.minimo)}</span>
               </span>
               <button className="cta-icon-btn" onClick={abrirConfig} title="Cambiar riesgo por trade"><Pencil size={13} /></button>
             </div>

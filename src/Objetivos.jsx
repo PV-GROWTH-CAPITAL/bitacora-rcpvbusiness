@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Plus, X, Trash2, Check, ChevronLeft, ChevronRight, Target, Pencil } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
+import { enmascarar } from "./utils/importes";
+
+// Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
+function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
 
 const OBJETIVOS_TABLE = "objetivos";
 const TRADES_TABLE = "trades";
@@ -12,7 +16,7 @@ const TIPOS = [
   { key: "anual", label: "Anual" },
 ];
 
-function fmtMoney(n) {
+function fmtMoneyBase(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "\u2212" : "";
   return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
@@ -398,7 +402,7 @@ function SeccionObjetivos() {
                       <div className="obj-progress-fill" style={{ width: `${pct}%`, background: estado === "logrado" ? "var(--win)" : estado === "fallido" ? "var(--loss)" : "var(--accent)" }} />
                     </div>
                     <div className="obj-goal-sub obj-mono" style={{ color: estado === "logrado" ? "var(--win)" : estado === "fallido" ? "var(--loss)" : "var(--text-dim)" }}>
-                      {fmtMoney(actual)} de {fmtMoney(o.meta_valor)} ({pct}%)
+                      <span className="importe">{fmtMoney(actual)}</span> de <span className="importe">{fmtMoney(o.meta_valor)}</span> ({pct}%)
                       {estado === "logrado" && " — ¡objetivo cumplido!"}
                       {estado === "fallido" && " — objetivo fallido"}
                     </div>
