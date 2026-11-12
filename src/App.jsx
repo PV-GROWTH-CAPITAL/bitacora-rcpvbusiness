@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 import AppShell from "./AppShell";
 import LandingPage from "./LandingPage";
+import { TEXTOS_LEGALES } from "./textosLegales";
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = cargando, null = sin sesión
@@ -463,36 +464,7 @@ const casillaStyle = {
 };
 
 function LegalModal({ tema, onClose }) {
-  const contenido = {
-    aviso: {
-      titulo: "Aviso legal",
-      texto:
-        "Texto de ejemplo pendiente de completar con los datos reales de tu empresa: razón social, NIF/CIF, domicilio, datos de contacto y, si aplica, datos de inscripción registral. Sustitúyelo por tu información real antes de publicarlo — idealmente revisado por un profesional.",
-    },
-    privacidad: {
-      titulo: "Política de privacidad",
-      texto:
-        "Texto de ejemplo pendiente de completar: qué datos personales recoges (correo, operaciones que registra el usuario), con qué finalidad los tratas, la base legal, cuánto tiempo los conservas y cómo puede alguien ejercer sus derechos de acceso, rectificación o supresión. Sustitúyelo por tu política real antes de publicarlo.",
-      // Párrafos ya definitivos, detrás del texto de ejemplo.
-      parrafos: [
-        {
-          titulo: "Comunicaciones por correo.",
-          texto:
-            "Usamos tu correo electrónico para gestionar tu cuenta: confirmar el alta, recuperar la contraseña y enviarte avisos necesarios sobre el servicio. Solo si marcas la casilla correspondiente al registrarte o en «Mi cuenta», te enviaremos además novedades de la Bitácora y contenido de RCPV Business. La base de este envío es tu consentimiento: es opcional, no condiciona el uso de la Bitácora y puedes retirarlo en cualquier momento desmarcando la casilla en «Mi cuenta». Guardamos si lo has aceptado y la fecha del último cambio. No cedemos tu correo a terceros para que te envíen publicidad.",
-        },
-        {
-          titulo: "Descarga y borrado de tus datos.",
-          texto:
-            "Desde «Mi cuenta» puedes descargar en cualquier momento una copia de tus datos en un archivo JSON: todo lo que has registrado en la Bitácora y la lista de tus imágenes (las imágenes no van dentro del archivo). También puedes eliminar tu cuenta tú mismo: al hacerlo se borran de forma definitiva tu usuario, tus datos y tus imágenes, y no se pueden recuperar. Con estas dos opciones puedes ejercer directamente tus derechos de acceso, portabilidad y supresión; para cualquier otra solicitud, escríbenos al correo de contacto indicado en el aviso legal.",
-        },
-      ],
-    },
-    cookies: {
-      titulo: "Política de cookies",
-      texto:
-        "Texto de ejemplo pendiente de completar: qué cookies usa la web (por ejemplo, las técnicas de sesión que gestiona Supabase Auth) y si hay cookies de analítica o de terceros. Sustitúyelo por tu política real antes de publicarlo.",
-    },
-  }[tema] || { titulo: "Información legal", texto: "Contenido pendiente de redactar." };
+  const contenido = TEXTOS_LEGALES[tema] || { titulo: "Información legal", parrafos: [] };
 
   return (
     <div style={legalBackdropStyle} onClick={onClose}>
@@ -507,9 +479,8 @@ function LegalModal({ tema, onClose }) {
           </button>
         </div>
         <div style={{ color: "#B7BFCB", fontSize: 13.5, lineHeight: 1.7, fontFamily: "IBM Plex Sans, sans-serif" }}>
-          {contenido.texto}
-          {(contenido.parrafos || []).map((p) => (
-            <p key={p.titulo} style={{ margin: "14px 0 0" }}>
+          {(contenido.parrafos || []).map((p, i) => (
+            <p key={p.titulo} style={{ margin: i === 0 ? 0 : "14px 0 0" }}>
               <strong style={{ color: "#ECEFF3" }}>{p.titulo}</strong> {p.texto}
             </p>
           ))}
@@ -532,7 +503,7 @@ const legalBackdropStyle = {
 
 const legalCardStyle = {
   width: "100%",
-  maxWidth: 460,
+  maxWidth: 640,
   background: "linear-gradient(180deg, #171D28, #12161F)",
   border: "1px solid #262C39",
   borderRadius: 14,
