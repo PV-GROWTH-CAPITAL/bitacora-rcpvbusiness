@@ -17,8 +17,7 @@ export const TRIMESTRES = [
 ];
 // Modos del filtro, en el orden en que salen en la barra.
 export const MODOS = [
-  ["todo", "Todo"], ["12m", "12M"], ["90d", "90D"], ["30d", "30D"],
-  ["mes", "Mes"], ["trimestre", "Trimestre"], ["anio", "Año"],
+  ["todo", "Todo"], ["mes", "Mes"], ["trimestre", "Trimestre"], ["anio", "Año"],
 ];
 export const TODAS_EMPRESAS = "GENERAL"; // valor de filtro.empresa cuando no se filtra por empresa
 
@@ -38,13 +37,6 @@ export function hoyIso(ahora = new Date()) {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-export function sumarDias(iso, n) {
-  const p = partesIso(iso);
-  if (!p) return iso;
-  const t = new Date(Date.UTC(p.anio, p.mes - 1, p.dia + n));
-  return isoDe(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
-}
-
 export function ultimoDiaMes(anio, mes) {
   return new Date(Date.UTC(anio, mes, 0)).getUTCDate();
 }
@@ -56,21 +48,10 @@ export function filtroInicial(hoy = hoyIso()) {
 }
 
 // Rango { desde, hasta } (ambos incluidos) que corresponde al filtro, o null si es "todo".
-// - 30d / 90d: los últimos 30 / 90 días, con hoy incluido.
-// - 12m: desde el día siguiente al mismo día del año pasado hasta hoy.
 // - mes / trimestre / anio: meses naturales de filtro.anio.
 export function rangoDeFiltro(filtro, hoy = hoyIso()) {
   const anio = Number(filtro?.anio);
   switch (filtro?.modo) {
-    case "30d":
-      return { desde: sumarDias(hoy, -29), hasta: hoy };
-    case "90d":
-      return { desde: sumarDias(hoy, -89), hasta: hoy };
-    case "12m": {
-      const p = partesIso(hoy);
-      const dia = Math.min(p.dia, ultimoDiaMes(p.anio - 1, p.mes)); // 29 de febrero → 28
-      return { desde: sumarDias(isoDe(p.anio - 1, p.mes, dia), 1), hasta: hoy };
-    }
     case "mes": {
       const mes = Number(filtro.mes);
       return { desde: isoDe(anio, mes, 1), hasta: isoDe(anio, mes, ultimoDiaMes(anio, mes)) };
@@ -89,20 +70,11 @@ export function rangoDeFiltro(filtro, hoy = hoyIso()) {
 // Texto corto del periodo, para títulos de tarjetas y tablas.
 export function etiquetaFiltro(filtro) {
   switch (filtro?.modo) {
-    case "12m": return "Últimos 12 meses";
-    case "90d": return "Últimos 90 días";
-    case "30d": return "Últimos 30 días";
     case "mes": return `${MESES_CORTOS[filtro.mes - 1]} ${filtro.anio}`;
     case "trimestre": return `T${filtro.trimestre} ${filtro.anio}`;
     case "anio": return String(filtro.anio);
     default: return "Todo";
   }
-}
-
-// "2026-11-03" → "3 nov 2026", sin pasar por Date.
-export function fmtDiaCorto(iso) {
-  const p = partesIso(iso);
-  return p ? `${p.dia} ${MESES_CORTOS[p.mes - 1].toLowerCase()} ${p.anio}` : "";
 }
 
 // Años que ofrece el selector: los que aparecen en las fechas dadas, el año en curso y el del filtro.
