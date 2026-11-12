@@ -5,8 +5,8 @@
 -- PASO 1 (hazlo primero, a mano): crea el bucket de almacenamiento
 --   Supabase → menú lateral "Storage" → "New bucket"
 --   Nombre: capturas
---   Public bucket: ACTIVADO (para que las imágenes se puedan ver
---   directamente en la web)
+--   Public bucket: DESACTIVADO (bucket privado: la web enseña las
+--   imágenes con URLs firmadas, ver src/capturasUrls.js)
 --   → Create bucket
 --
 -- PASO 2: ejecuta este script en SQL Editor > New query > Run
