@@ -9,20 +9,6 @@ const TABLA_COMPRAS = "cuentas_compradas";
 const TABLA_RETIROS = "retiros";
 const TABLA_INVERSIONES = "inversiones_desgravables";
 
-const EMPRESAS_PRESET = [
-  "MY FUNDED FUTURES",
-  "APEX",
-  "LUCID TRADING",
-  "TOPSTEP",
-  "FUNDING PIPS",
-  "FUNDED NEXT",
-  "ALPHA CAPITAL",
-  "TRADEIFY",
-  "FTMO",
-  "5ERS",
-  "NYS MARKETS"
-];
-
 function fmtMoney(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "\u2212" : "";
@@ -75,7 +61,8 @@ const emptyCompra = { fecha: todayIsoLocal(), cuenta: "", proveedor: "", costo: 
 const emptyRetiro = { fecha: todayIsoLocal(), cuenta: "", proveedor: "", monto: "", notas: "" };
 const emptyInv = { fecha: todayIsoLocal(), concepto: "", monto: "", notas: "" };
 
-export default function Contabilidad({ session, activeTab = "GENERAL", onActiveTabChange }) {
+// empresas: nombres de las firmas del usuario (tabla empresas_usuario), en su orden. Llegan de AppShell.
+export default function Contabilidad({ session, empresas = [], activeTab = "GENERAL", onActiveTabChange }) {
   const [compras, setCompras] = useState([]);
   const [retiros, setRetiros] = useState([]);
   const [inversiones, setInversiones] = useState([]);
@@ -206,9 +193,10 @@ export default function Contabilidad({ session, activeTab = "GENERAL", onActiveT
   const resumenPorEmpresa = useMemo(() => {
     const mapa = {};
 
-    // Inicializar empresas preset
-    EMPRESAS_PRESET.forEach(emp => {
-      mapa[emp] = { empresa: emp, cuentas: 0, costo: 0, retiros: 0 };
+    // Las firmas del usuario salen siempre, aunque estén a cero
+    empresas.forEach(nombre => {
+      const emp = getEmpresaNorm(nombre);
+      if (emp) mapa[emp] = { empresa: emp, cuentas: 0, costo: 0, retiros: 0 };
     });
 
     comprasF.forEach(c => {
@@ -225,7 +213,7 @@ export default function Contabilidad({ session, activeTab = "GENERAL", onActiveT
     });
 
     return Object.values(mapa).filter((item) => item.empresa !== "OTRA EMPRESA" && item.empresa !== "OTRA / SIN ASIGNAR").sort((a, b) => (b.retiros - b.costo) - (a.retiros - a.costo));
-  }, [comprasF, retirosF, getEmpresaDeRetiro]);
+  }, [comprasF, retirosF, getEmpresaDeRetiro, empresas]);
 
   // --- DATOS DE LA EMPRESA SELECCIONADA EN EL SIDEBAR ---
   const datosEmpresaActiva = useMemo(() => {

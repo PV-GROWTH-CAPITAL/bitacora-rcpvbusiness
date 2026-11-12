@@ -77,11 +77,11 @@ async function comprimirImagen(file) {
   return { blob, w, h };
 }
 
-const EMPRESAS = ["MY FUNDED FUTURES", "APEX", "LUCID TRADING", "TOPSTEP", "FUNDING PIPS", "FUNDED NEXT", "ALPHA CAPITAL", "TRADEIFY", "FTMO", "5ERS", "NYS MARKETS"];
 const formVacio = () => ({ cuenta: "", empresa: "", importe: "", importeUsd: "", fecha: todayIsoLocal() });
 const OTRA = "__otra__"; // valor del desplegable para escribir una cuenta que no está en Cuentas activas
 
-export default function Payouts({ session }) {
+// empresas (prop): nombres de las firmas del usuario (tabla empresas_usuario), en su orden. Llegan de AppShell.
+export default function Payouts({ session, empresas: empresasUsuario = [] }) {
   const [retiros, setRetiros] = useState([]);
   const [capturas, setCapturas] = useState({}); // { [retiro_id]: { id, imagen_path } }
   const [compras, setCompras] = useState([]); // cuentas_compradas: solo para proponer la empresa de una cuenta
@@ -188,11 +188,11 @@ export default function Payouts({ session }) {
   const primeraFecha = lista.length ? lista[lista.length - 1].fecha : null;
   const sinCaptura = useMemo(() => lista.filter((f) => !f.captura).length, [lista]);
 
-  // Empresas del desplegable del modal: las de siempre más cualquier otra que ya aparezca en tus retiros.
+  // Empresas del desplegable del modal: tus firmas más cualquier otra que ya aparezca en tus retiros.
   const empresas = useMemo(() => {
-    const extra = retiros.map((r) => r.proveedor).filter((e) => e && !EMPRESAS.includes(e));
-    return [...EMPRESAS, ...Array.from(new Set(extra))];
-  }, [retiros]);
+    const extra = retiros.map((r) => r.proveedor).filter((e) => e && !empresasUsuario.includes(e));
+    return [...empresasUsuario, ...Array.from(new Set(extra))];
+  }, [retiros, empresasUsuario]);
 
   // Empresa que ya usas con una cuenta: la del último retiro, o la de la compra de esa cuenta.
   const empresaDeCuenta = useCallback((cuenta) => {
