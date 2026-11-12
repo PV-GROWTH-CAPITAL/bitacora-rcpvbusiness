@@ -15,6 +15,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [aceptaCorreos, setAceptaCorreos] = useState(false); // casilla opcional del registro
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -45,7 +47,14 @@ export default function App() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        // La elección de la casilla viaja en los metadatos del alta: si hay que confirmar el
+        // correo todavía no hay sesión, así que la fila de `perfiles` se crea en el primer
+        // acceso leyendo este dato (src/perfil.js).
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { acepta_correos: aceptaCorreos } },
+        });
         // Si el error es "ya existe una cuenta con este correo", no lo tratamos
         // como un error normal: mostramos el mismo mensaje neutro que si el
         // registro fuera nuevo, para no revelar a quien prueba correos al azar
@@ -302,6 +311,18 @@ export default function App() {
             </div>
           )}
 
+          {mode === "signup" && (
+            <label style={casillaStyle}>
+              <input
+                type="checkbox"
+                checked={aceptaCorreos}
+                onChange={(e) => setAceptaCorreos(e.target.checked)}
+                style={{ marginTop: 2, accentColor: "#C9A23F", flexShrink: 0 }}
+              />
+              <span>Quiero recibir por correo novedades de la Bitácora y contenido de RCPV Business</span>
+            </label>
+          )}
+
           <button type="submit" disabled={busy} style={primaryBtnStyle}>
             {busy ? "Procesando..." : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
           </button>
@@ -310,7 +331,7 @@ export default function App() {
             {mode === "login" ? (
               <>
                 ¿No tienes cuenta?{" "}
-                <button type="button" onClick={() => { setMode("signup"); limpiarMensajes(); }} style={linkBtnStyle}>
+                <button type="button" onClick={() => { setMode("signup"); setAceptaCorreos(false); limpiarMensajes(); }} style={linkBtnStyle}>
                   Regístrate
                 </button>
               </>
@@ -429,6 +450,18 @@ const infoBoxStyle = {
   marginBottom: 8,
 };
 
+const casillaStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: 8,
+  marginTop: 14,
+  fontSize: 12.5,
+  lineHeight: 1.45,
+  color: "#B7BFCB",
+  fontFamily: "IBM Plex Sans, sans-serif",
+  cursor: "pointer",
+};
+
 function LegalModal({ tema, onClose }) {
   const contenido = {
     aviso: {
@@ -440,6 +473,19 @@ function LegalModal({ tema, onClose }) {
       titulo: "Política de privacidad",
       texto:
         "Texto de ejemplo pendiente de completar: qué datos personales recoges (correo, operaciones que registra el usuario), con qué finalidad los tratas, la base legal, cuánto tiempo los conservas y cómo puede alguien ejercer sus derechos de acceso, rectificación o supresión. Sustitúyelo por tu política real antes de publicarlo.",
+      // Párrafos ya definitivos, detrás del texto de ejemplo.
+      parrafos: [
+        {
+          titulo: "Comunicaciones por correo.",
+          texto:
+            "Usamos tu correo electrónico para gestionar tu cuenta: confirmar el alta, recuperar la contraseña y enviarte avisos necesarios sobre el servicio. Solo si marcas la casilla correspondiente al registrarte o en «Mi cuenta», te enviaremos además novedades de la Bitácora y contenido de RCPV Business. La base de este envío es tu consentimiento: es opcional, no condiciona el uso de la Bitácora y puedes retirarlo en cualquier momento desmarcando la casilla en «Mi cuenta». Guardamos si lo has aceptado y la fecha del último cambio. No cedemos tu correo a terceros para que te envíen publicidad.",
+        },
+        {
+          titulo: "Descarga y borrado de tus datos.",
+          texto:
+            "Desde «Mi cuenta» puedes descargar en cualquier momento una copia de tus datos en un archivo JSON: todo lo que has registrado en la Bitácora y la lista de tus imágenes (las imágenes no van dentro del archivo). También puedes eliminar tu cuenta tú mismo: al hacerlo se borran de forma definitiva tu usuario, tus datos y tus imágenes, y no se pueden recuperar. Con estas dos opciones puedes ejercer directamente tus derechos de acceso, portabilidad y supresión; para cualquier otra solicitud, escríbenos al correo de contacto indicado en el aviso legal.",
+        },
+      ],
     },
     cookies: {
       titulo: "Política de cookies",
@@ -462,6 +508,11 @@ function LegalModal({ tema, onClose }) {
         </div>
         <div style={{ color: "#B7BFCB", fontSize: 13.5, lineHeight: 1.7, fontFamily: "IBM Plex Sans, sans-serif" }}>
           {contenido.texto}
+          {(contenido.parrafos || []).map((p) => (
+            <p key={p.titulo} style={{ margin: "14px 0 0" }}>
+              <strong style={{ color: "#ECEFF3" }}>{p.titulo}</strong> {p.texto}
+            </p>
+          ))}
         </div>
       </div>
     </div>

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2, RefreshCw } from "lucide-react";
+import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2, RefreshCw, Mail } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { descargarMisDatos, borrarCuenta } from "./misDatos";
 import { FIRMAS_SUGERIDAS, cargarEmpresas, tieneDatosContables, crearLista } from "./empresasUsuario";
 import { BienvenidaFirmas, ModalMisFirmas } from "./MisFirmas";
+import { cargarOCrearPerfil, guardarAceptaCorreos } from "./perfil";
 
 const PALABRA_ELIMINAR = "ELIMINAR";
 import TradingJournal from "./TradingJournal";
@@ -64,6 +65,37 @@ export default function AppShell({ session, onLogout }) {
   }, [userId]);
 
   useEffect(() => { cargarFirmas(); }, [cargarFirmas]);
+
+  // Perfil del usuario (tabla perfiles): de momento solo si acepta correos de novedades.
+  // Si no existe se crea aquí, en el primer acceso. Si falla, la app sigue funcionando.
+  const [perfil, setPerfil] = useState(null);
+  const [showCorreosModal, setShowCorreosModal] = useState(false);
+  const [correosBusy, setCorreosBusy] = useState(false);
+  const [correosMsg, setCorreosMsg] = useState({ type: "", text: "" });
+
+  useEffect(() => {
+    let vigente = true;
+    cargarOCrearPerfil(session)
+      .then((p) => { if (vigente) setPerfil(p); })
+      .catch((e) => console.error("No se ha podido cargar el perfil:", e));
+    return () => { vigente = false; };
+    // Solo al cambiar de usuario: la sesión se renueva sola cada cierto tiempo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  async function cambiarAceptaCorreos(valor) {
+    if (correosBusy) return;
+    setCorreosBusy(true);
+    setCorreosMsg({ type: "", text: "" });
+    try {
+      setPerfil(await guardarAceptaCorreos(userId, valor));
+      setCorreosMsg({ type: "info", text: valor ? "Guardado: recibirás nuestros correos." : "Guardado: no recibirás nuestros correos." });
+    } catch (e) {
+      setCorreosMsg({ type: "error", text: `No se ha podido guardar. ${e.message || ""}`.trim() });
+    } finally {
+      setCorreosBusy(false);
+    }
+  }
 
   const nombresEmpresas = useMemo(() => empresas.map((e) => e.nombre), [empresas]);
 
@@ -267,7 +299,14 @@ export default function AppShell({ session, onLogout }) {
         .shell-btn.primary { background: #C9A23F; color: #16130A; border-color: #C9A23F; font-weight: 600; }
         .shell-msg-error { background: #6E2E26; color: #FBD8D2; font-size: 12.5px; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; }
         .shell-msg-info { background: #2E5F44; color: #D9F2E4; font-size: 12.5px; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; }
-        .shell-user { gap: 4px; }
+        /* El correo va en su propia línea y los iconos debajo: con seis iconos ya no cabían en una sola. */
+        .shell-user { gap: 4px; flex-wrap: wrap; }
+        .shell-user-email { flex: 1 1 100%; margin-bottom: 4px; }
+        .shell-casilla {
+          display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45;
+          color: #E7ECF2; cursor: pointer;
+        }
+        .shell-casilla input { margin-top: 3px; accent-color: #C9A23F; flex-shrink: 0; }
         .shell-icon-btn:disabled, .shell-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .shell-icon-btn.danger:hover { color: #FBD8D2; background: #6E2E26; }
         .shell-btn.danger { background: #B3392B; color: #FFF4F2; border-color: #B3392B; font-weight: 600; }
@@ -461,6 +500,15 @@ export default function AppShell({ session, onLogout }) {
           </button>
           <button
             className="shell-icon-btn"
+            onClick={() => { setCorreosMsg({ type: "", text: "" }); setShowCorreosModal(true); }}
+            disabled={!perfil}
+            aria-label="Correos de novedades"
+            title="Correos de novedades"
+          >
+            <Mail size={15} />
+          </button>
+          <button
+            className="shell-icon-btn"
             onClick={descargarDatos}
             disabled={descargando}
             aria-label="Descargar mis datos (JSON, sin imágenes)"
@@ -501,6 +549,43 @@ export default function AppShell({ session, onLogout }) {
 
       {showFirmasModal && firmasEstado === "ok" && (
         <ModalMisFirmas userId={userId} empresas={empresas} onCambio={setEmpresas} onCerrar={() => setShowFirmasModal(false)} />
+      )}
+
+      {showCorreosModal && perfil && (
+        <div className="shell-modal-backdrop" onClick={() => setShowCorreosModal(false)}>
+          <div className="shell-modal" role="dialog" aria-modal="true" aria-label="Correos de novedades" onClick={(e) => e.stopPropagation()}>
+            <div className="shell-modal-head">
+              <div style={{ fontSize: 17, fontWeight: 600, color: "#E7ECF2", fontFamily: "Space Grotesk, sans-serif" }}>
+                Correos de novedades
+              </div>
+              <button className="shell-icon-btn" onClick={() => setShowCorreosModal(false)} aria-label="Cerrar">
+                <X size={18} />
+              </button>
+            </div>
+
+            {correosMsg.text && (
+              <div className={correosMsg.type === "error" ? "shell-msg-error" : "shell-msg-info"}>{correosMsg.text}</div>
+            )}
+
+            <label className="shell-casilla">
+              <input
+                type="checkbox"
+                checked={perfil.acepta_correos === true}
+                onChange={(e) => cambiarAceptaCorreos(e.target.checked)}
+                disabled={correosBusy}
+              />
+              <span>Quiero recibir por correo novedades de la Bitácora y contenido de RCPV Business</span>
+            </label>
+            <p className="shell-modal-text" style={{ marginTop: 12 }}>
+              Es opcional y puedes cambiarlo cuando quieras. Los correos necesarios para tu cuenta (confirmar el alta o
+              recuperar la contraseña) te llegarán igualmente.
+            </p>
+
+            <div className="shell-modal-actions">
+              <button className="shell-btn" onClick={() => setShowCorreosModal(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showPasswordModal && (
