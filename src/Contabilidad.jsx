@@ -11,12 +11,16 @@ import {
   MESES_CORTOS, TRIMESTRES, TODAS_EMPRESAS,
   hoyIso, partesIso, trimestreDe, rangoDeFiltro, etiquetaFiltro, aniosDisponibles,
 } from "./utils/periodo";
+import { enmascarar } from "./utils/importes";
+
+// Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
+function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
 
 const TABLA_COMPRAS = "cuentas_compradas";
 const TABLA_RETIROS = "retiros";
 const TABLA_INVERSIONES = "inversiones_desgravables";
 
-function fmtMoney(n) {
+function fmtMoneyBase(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "\u2212" : "";
   return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -532,20 +536,20 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
                       {tablaPeriodos.porTrimestre && <small>{TRIMESTRES[f.idx - 1].rango}</small>}
                       {f.actual && <span className="jt-res-hoy">En curso</span>}
                     </span>
-                    <span className="jt-res-ing jt-mono jt-pnl-win" data-l="Ingresos">{sinDatos ? "—" : fmtMoney(f.ingresos)}</span>
-                    <span className="jt-res-gas jt-mono jt-pnl-loss" data-l="Gastos">{sinDatos ? "—" : fmtMoney(-f.gastos)}</span>
-                    <span className={`jt-res-net jt-mono ${f.neto >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>{sinDatos ? "—" : fmtMoney(f.neto)}</span>
-                    <span className={`jt-res-acu jt-mono ${f.acumulado >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`} data-l="Acumulado">{sinDatos ? "—" : fmtMoney(f.acumulado)}</span>
+                    <span className="jt-res-ing jt-mono importe jt-pnl-win" data-l="Ingresos">{sinDatos ? "—" : fmtMoney(f.ingresos)}</span>
+                    <span className="jt-res-gas jt-mono importe jt-pnl-loss" data-l="Gastos">{sinDatos ? "—" : fmtMoney(-f.gastos)}</span>
+                    <span className={`jt-res-net jt-mono importe ${f.neto >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>{sinDatos ? "—" : fmtMoney(f.neto)}</span>
+                    <span className={`jt-res-acu jt-mono importe ${f.acumulado >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`} data-l="Acumulado">{sinDatos ? "—" : fmtMoney(f.acumulado)}</span>
                   </button>
                 );
               })}
 
               <div className="jt-res-fila total">
                 <span className="jt-res-lab"><b>Total {anioFiltro}</b></span>
-                <span className="jt-res-ing jt-mono jt-pnl-win" data-l="Ingresos">{fmtMoney(tablaPeriodos.total.ingresos)}</span>
-                <span className="jt-res-gas jt-mono jt-pnl-loss" data-l="Gastos">{fmtMoney(-tablaPeriodos.total.gastos)}</span>
-                <span className={`jt-res-net jt-mono ${tablaPeriodos.total.neto >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>{fmtMoney(tablaPeriodos.total.neto)}</span>
-                <span className={`jt-res-acu jt-mono ${tablaPeriodos.total.neto >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`} data-l="Acumulado">{fmtMoney(tablaPeriodos.total.neto)}</span>
+                <span className="jt-res-ing jt-mono jt-pnl-win" data-l="Ingresos"><span className="importe">{fmtMoney(tablaPeriodos.total.ingresos)}</span></span>
+                <span className="jt-res-gas jt-mono jt-pnl-loss" data-l="Gastos"><span className="importe">{fmtMoney(-tablaPeriodos.total.gastos)}</span></span>
+                <span className={`jt-res-net jt-mono ${tablaPeriodos.total.neto >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}><span className="importe">{fmtMoney(tablaPeriodos.total.neto)}</span></span>
+                <span className={`jt-res-acu jt-mono ${tablaPeriodos.total.neto >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`} data-l="Acumulado"><span className="importe">{fmtMoney(tablaPeriodos.total.neto)}</span></span>
               </div>
             </div>
           </div>
@@ -568,10 +572,10 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
               <div className="jt-card highlight" style={{ borderColor: "#D8B876" }}>
                 <div className="jt-card-title" style={{ color: "var(--accent)" }}>NETO HISTÓRICO TOTAL (CARRERA)</div>
                 <div className={`jt-card-value jt-mono ${historicoGlobal.netoHist >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                  {fmtMoney(historicoGlobal.netoHist)}
+                  <span className="importe">{fmtMoney(historicoGlobal.netoHist)}</span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
-                  Retirado: {fmtMoney(historicoGlobal.totalRetiradoHist)} | Gastos: {fmtMoney(historicoGlobal.totalInvertidoHist + historicoGlobal.totalInversionesHist)}
+                  Retirado: <span className="importe">{fmtMoney(historicoGlobal.totalRetiradoHist)}</span> | Gastos: <span className="importe">{fmtMoney(historicoGlobal.totalInvertidoHist + historicoGlobal.totalInversionesHist)}</span>
                 </div>
               </div>
 
@@ -579,7 +583,7 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
               <div className="jt-card highlight">
                 <div className="jt-card-title" style={{ color: "var(--accent)" }}>{esPeriodoFiscal ? "NETO A TRIBUTAR" : "NETO DEL PERIODO"} ({etiquetaPeriodo})</div>
                 <div className={`jt-card-value jt-mono ${resumenPeriodo.netoTributable >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                  {fmtMoney(resumenPeriodo.netoTributable)}
+                  <span className="importe">{fmtMoney(resumenPeriodo.netoTributable)}</span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
                   {esPeriodoFiscal ? "Base imponible para impuestos" : "Retiros − cuentas − inversiones desgravables"}
@@ -588,17 +592,17 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
 
               <div className="jt-card">
                 <div className="jt-card-title">TOTAL RETIRADO ({etiquetaPeriodo})</div>
-                <div className="jt-card-value jt-mono jt-pnl-win">{fmtMoney(resumenPeriodo.totalRetirado)}</div>
+                <div className="jt-card-value jt-mono jt-pnl-win"><span className="importe">{fmtMoney(resumenPeriodo.totalRetirado)}</span></div>
               </div>
 
               <div className="jt-card">
                 <div className="jt-card-title">GASTO EN CUENTAS ({etiquetaPeriodo})</div>
-                <div className="jt-card-value jt-mono jt-pnl-loss">{fmtMoney(-resumenPeriodo.totalInvertido)}</div>
+                <div className="jt-card-value jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-resumenPeriodo.totalInvertido)}</span></div>
               </div>
 
               <div className="jt-card">
                 <div className="jt-card-title">INVERSIONES DESGRAVABLES ({etiquetaPeriodo})</div>
-                <div className="jt-card-value jt-mono jt-pnl-loss">{fmtMoney(-resumenPeriodo.totalInversiones)}</div>
+                <div className="jt-card-value jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-resumenPeriodo.totalInversiones)}</span></div>
               </div>
             </div>
 
@@ -627,9 +631,9 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
                         <tr key={item.empresa} style={{ cursor: "pointer" }} onClick={() => onActiveTabChange?.(item.empresa)}>
                           <td style={{ fontWeight: 600, color: "var(--accent)" }}>{item.empresa}</td>
                           <td className="jt-mono">{item.cuentas}</td>
-                          <td className="jt-mono jt-pnl-loss">{fmtMoney(-item.costo)}</td>
-                          <td className="jt-mono jt-pnl-win">{fmtMoney(item.retiros)}</td>
-                          <td className={`jt-mono ${beneficio >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>{fmtMoney(beneficio)}</td>
+                          <td className="jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-item.costo)}</span></td>
+                          <td className="jt-mono jt-pnl-win"><span className="importe">{fmtMoney(item.retiros)}</span></td>
+                          <td className={`jt-mono ${beneficio >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}><span className="importe">{fmtMoney(beneficio)}</span></td>
                         </tr>
                       );
                     })}
@@ -655,7 +659,7 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
                         <tr key={i.id}>
                           <td className="jt-mono">{fmtDate(i.fecha)}</td>
                           <td>{i.concepto || "\u2014"}</td>
-                          <td className="jt-mono jt-pnl-loss">{fmtMoney(-i.monto)}</td>
+                          <td className="jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-i.monto)}</span></td>
                           <td>
                             <div className="jt-row-actions">
                               <button className="jt-icon-btn" onClick={() => abrirEditarInv(i)}><Pencil size={14} /></button>
@@ -682,24 +686,24 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
               <div className="jt-card highlight">
                 <div className="jt-card-title">{tituloNeto} ({etiquetaPeriodo})</div>
                 <div className={`jt-card-value jt-mono ${datosEmpresaActiva.netoPeriodo >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                  {fmtMoney(datosEmpresaActiva.netoPeriodo)}
+                  <span className="importe">{fmtMoney(datosEmpresaActiva.netoPeriodo)}</span>
                 </div>
               </div>
 
               <div className="jt-card">
                 <div className="jt-card-title">RETIROS ({etiquetaPeriodo})</div>
-                <div className="jt-card-value jt-mono jt-pnl-win">{fmtMoney(datosEmpresaActiva.retiroPeriodo)}</div>
+                <div className="jt-card-value jt-mono jt-pnl-win"><span className="importe">{fmtMoney(datosEmpresaActiva.retiroPeriodo)}</span></div>
               </div>
 
               <div className="jt-card">
                 <div className="jt-card-title">GASTO CUENTAS ({etiquetaPeriodo})</div>
-                <div className="jt-card-value jt-mono jt-pnl-loss">{fmtMoney(-datosEmpresaActiva.gastoPeriodo)}</div>
+                <div className="jt-card-value jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-datosEmpresaActiva.gastoPeriodo)}</span></div>
               </div>
 
               <div className="jt-card">
                 <div className="jt-card-title">NETO HISTÓRICO TOTAL</div>
                 <div className={`jt-card-value jt-mono ${datosEmpresaActiva.netoHist >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                  {fmtMoney(datosEmpresaActiva.netoHist)}
+                  <span className="importe">{fmtMoney(datosEmpresaActiva.netoHist)}</span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>Toda la historia en {activeTab}</div>
               </div>
@@ -724,7 +728,7 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
                         <tr key={c.id}>
                           <td className="jt-mono">{fmtDate(c.fecha)}</td>
                           <td style={{ fontWeight: 600 }}>{c.cuenta || "\u2014"}</td>
-                          <td className="jt-mono jt-pnl-loss">{fmtMoney(-c.costo)}</td>
+                          <td className="jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-c.costo)}</span></td>
                           <td style={{ color: "var(--text-dim)" }}>{c.notas || "\u2014"}</td>
                           <td>
                             <div className="jt-row-actions">
@@ -757,7 +761,7 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
                         <tr key={r.id}>
                           <td className="jt-mono">{fmtDate(r.fecha)}</td>
                           <td style={{ fontWeight: 600 }}>{r.cuenta || "\u2014"}</td>
-                          <td className="jt-mono jt-pnl-win">{fmtMoney(r.monto)}</td>
+                          <td className="jt-mono jt-pnl-win"><span className="importe">{fmtMoney(r.monto)}</span></td>
                           <td style={{ color: "var(--text-dim)" }}>{r.notas || "\u2014"}</td>
                           <td>
                             <div className="jt-row-actions">

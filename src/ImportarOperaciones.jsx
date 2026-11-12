@@ -13,6 +13,10 @@ import {
   filaDeTrade,
   trocearClaves,
 } from "./importar/index.js";
+import { enmascarar } from "./utils/importes";
+
+// Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
+function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
 
 // Importador de operaciones desde el CSV de la plataforma (Tradovate, TopstepX).
 // El archivo se lee en el navegador (no se sube a ningún sitio) y no se escribe nada en
@@ -46,7 +50,7 @@ function guardarPreferencia(clave, valor) {
 
 const sumaCentimos = (ops, campo) => ops.reduce((s, o) => s + Math.round((Number(o[campo]) || 0) * 100), 0) / 100;
 
-function fmtMoney(n) {
+function fmtMoneyBase(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "−" : "";
   return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
@@ -362,13 +366,13 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
               </span>
               {nuevas.length > 0 && !lectura.conComisiones && (
                 <span className="jt-mono" style={{ color: totalNuevas >= 0 ? "var(--win)" : "var(--loss)" }}>
-                  P&amp;L de las nuevas: {fmtMoney(totalNuevas)}
+                  P&amp;L de las nuevas: <span className="importe">{fmtMoney(totalNuevas)}</span>
                 </span>
               )}
               {nuevas.length > 0 && lectura.conComisiones && (
                 <span className="jt-mono">
-                  Bruto {fmtMoney(brutoNuevas)} · Comisiones {fmtMoney((Math.round(totalNuevas * 100) - Math.round(brutoNuevas * 100)) / 100)} ·{" "}
-                  <span style={{ color: totalNuevas >= 0 ? "var(--win)" : "var(--loss)" }}>Neto {fmtMoney(totalNuevas)}</span>
+                  Bruto <span className="importe">{fmtMoney(brutoNuevas)}</span> · Comisiones {fmtMoney((Math.round(totalNuevas * 100) - Math.round(brutoNuevas * 100)) / 100)} ·{" "}
+                  <span style={{ color: totalNuevas >= 0 ? "var(--win)" : "var(--loss)" }}>Neto <span className="importe">{fmtMoney(totalNuevas)}</span></span>
                 </span>
               )}
             </div>
@@ -406,11 +410,11 @@ export default function ImportarOperaciones({ session, cuentas, cuentaInicial, o
                         <td className="jt-mono num">{fmtPrecio(o.precio_entrada)}</td>
                         <td className="jt-mono num">{fmtPrecio(o.precio_salida)}</td>
                         <td className="jt-mono num" style={{ color: o.resultado_bruto > 0 ? "var(--win)" : o.resultado_bruto < 0 ? "var(--loss)" : undefined }}>
-                          {fmtMoney(o.resultado_bruto)}
+                          <span className="importe">{fmtMoney(o.resultado_bruto)}</span>
                         </td>
                         {lectura.conComisiones && (
                           <td className="jt-mono num" style={{ color: o.resultado > 0 ? "var(--win)" : o.resultado < 0 ? "var(--loss)" : undefined }}>
-                            {fmtMoney(o.resultado)}
+                            <span className="importe">{fmtMoney(o.resultado)}</span>
                           </td>
                         )}
                         <td><span className={`ji-estado${ya ? "" : " nueva"}`}>{ya ? "Ya importada" : "Nueva"}</span></td>

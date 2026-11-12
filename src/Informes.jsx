@@ -14,11 +14,15 @@ import {
 } from "recharts";
 import { ChevronLeft, ChevronRight, CalendarRange, CalendarDays, Layers, Clock } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
+import { enmascarar } from "./utils/importes";
+
+// Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
+function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
 
 const TRADES_TABLE = "trades";
 const ESTRATEGIA_REGISTROS_TABLE = "estrategia_registros";
 
-function fmtMoney(n) {
+function fmtMoneyBase(n) {
   const v = Number(n) || 0;
   const sign = v > 0 ? "+" : v < 0 ? "\u2212" : "";
   return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
@@ -303,7 +307,7 @@ export default function Informes() {
                     <BarChart data={weekPorDia} margin={{ top: 4, right: 10, left: 0, bottom: 4 }}>
                       <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="label" stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} />
-                      <YAxis stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} width={56} tickFormatter={(v) => `${v} $`} />
+                      <YAxis stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} width={56} tickFormatter={(v) => enmascarar(`${v} $`)} />
                       <ReferenceLine y={0} stroke="#2A3648" />
                       <Tooltip contentStyle={{ background: "#1D2733", border: "1px solid #2A3648", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }} itemStyle={{ color: "#E7ECF2" }} labelStyle={{ color: "#8C99AA", marginBottom: 4 }} formatter={(v, n, p) => [fmtMoney(v), `${p.payload.count} op.`]} />
                       <Bar dataKey="total" radius={[3, 3, 0, 0]}>
@@ -336,14 +340,14 @@ export default function Informes() {
               <div className="inf-stat-card">
                 <div className="inf-stat-label">Mejor semana del mes</div>
                 <div className={`inf-stat-value inf-mono ${mejorSemanaMes && mejorSemanaMes.total >= 0 ? "inf-win" : "inf-loss"}`}>
-                  {mejorSemanaMes ? fmtMoney(mejorSemanaMes.total) : "\u2014"}
+                  {mejorSemanaMes ? <span className="importe">{fmtMoney(mejorSemanaMes.total)}</span> : "\u2014"}
                 </div>
                 <div className="inf-stat-sub">{mejorSemanaMes ? `Semana del ${fmtDateShort(mejorSemanaMes.inicio)}` : ""}</div>
               </div>
               <div className="inf-stat-card">
                 <div className="inf-stat-label">Peor semana del mes</div>
                 <div className={`inf-stat-value inf-mono ${peorSemanaMes && peorSemanaMes.total >= 0 ? "inf-win" : "inf-loss"}`}>
-                  {peorSemanaMes ? fmtMoney(peorSemanaMes.total) : "\u2014"}
+                  {peorSemanaMes ? <span className="importe">{fmtMoney(peorSemanaMes.total)}</span> : "\u2014"}
                 </div>
                 <div className="inf-stat-sub">{peorSemanaMes ? `Semana del ${fmtDateShort(peorSemanaMes.inicio)}` : ""}</div>
               </div>
@@ -357,7 +361,7 @@ export default function Informes() {
                     <BarChart data={monthPorSemana} margin={{ top: 4, right: 10, left: 0, bottom: 4 }}>
                       <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="inicio" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} tickFormatter={fmtDateShort} />
-                      <YAxis stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} width={56} tickFormatter={(v) => `${v} $`} />
+                      <YAxis stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickLine={false} width={56} tickFormatter={(v) => enmascarar(`${v} $`)} />
                       <ReferenceLine y={0} stroke="#2A3648" />
                       <Tooltip contentStyle={{ background: "#1D2733", border: "1px solid #2A3648", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }} itemStyle={{ color: "#E7ECF2" }} labelStyle={{ color: "#8C99AA", marginBottom: 4 }} labelFormatter={fmtDateShort} formatter={(v, n, p) => [fmtMoney(v), `${p.payload.count} op.`]} />
                       <Bar dataKey="total" radius={[3, 3, 0, 0]}>
@@ -383,7 +387,7 @@ export default function Informes() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={porEstrategia} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 4 }}>
                     <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => `${v} $`} />
+                    <XAxis type="number" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => enmascarar(`${v} $`)} />
                     <YAxis type="category" dataKey="estrategia" stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} width={140} />
                     <ReferenceLine x={0} stroke="#2A3648" />
                     <Tooltip contentStyle={{ background: "#1D2733", border: "1px solid #2A3648", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }} itemStyle={{ color: "#E7ECF2" }} labelStyle={{ color: "#8C99AA", marginBottom: 4 }} formatter={(v, n, p) => [fmtMoney(v), `${p.payload.count} op. · ${p.payload.winRate}% win rate`]} />
@@ -405,14 +409,14 @@ export default function Informes() {
               <div className="inf-stat-card">
                 <div className="inf-stat-label">Mejor hora</div>
                 <div className={`inf-stat-value inf-mono ${mejorHora && mejorHora.total >= 0 ? "inf-win" : "inf-loss"}`}>
-                  {mejorHora ? fmtMoney(mejorHora.total) : "\u2014"}
+                  {mejorHora ? <span className="importe">{fmtMoney(mejorHora.total)}</span> : "\u2014"}
                 </div>
                 <div className="inf-stat-sub">{mejorHora ? `${mejorHora.label} · ${mejorHora.count} op. · ${mejorHora.winRate}% win rate` : ""}</div>
               </div>
               <div className="inf-stat-card">
                 <div className="inf-stat-label">Peor hora</div>
                 <div className={`inf-stat-value inf-mono ${peorHora && peorHora.total >= 0 ? "inf-win" : "inf-loss"}`}>
-                  {peorHora ? fmtMoney(peorHora.total) : "\u2014"}
+                  {peorHora ? <span className="importe">{fmtMoney(peorHora.total)}</span> : "\u2014"}
                 </div>
                 <div className="inf-stat-sub">{peorHora ? `${peorHora.label} · ${peorHora.count} op. · ${peorHora.winRate}% win rate` : ""}</div>
               </div>
@@ -425,7 +429,7 @@ export default function Informes() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={porHora} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 4 }}>
                       <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => `${v} $`} />
+                      <XAxis type="number" stroke="#8C99AA" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => enmascarar(`${v} $`)} />
                       <YAxis type="category" dataKey="label" stroke="#8C99AA" tick={{ fontSize: 10.5, fontFamily: "IBM Plex Mono" }} width={100} />
                       <ReferenceLine x={0} stroke="#2A3648" />
                       <Tooltip
@@ -482,7 +486,7 @@ function ResumenGrid({ resumen, reglas }) {
     <div className="inf-stats-grid">
       <div className="inf-stat-card">
         <div className="inf-stat-label">P&amp;L del periodo</div>
-        <div className={`inf-stat-value inf-mono ${resumen.totalPnl >= 0 ? "inf-win" : "inf-loss"}`}>{fmtMoney(resumen.totalPnl)}</div>
+        <div className={`inf-stat-value inf-mono ${resumen.totalPnl >= 0 ? "inf-win" : "inf-loss"}`}><span className="importe">{fmtMoney(resumen.totalPnl)}</span></div>
         <div className="inf-stat-sub">{resumen.n} operaciones</div>
       </div>
       <div className="inf-stat-card">
@@ -493,7 +497,7 @@ function ResumenGrid({ resumen, reglas }) {
       <div className="inf-stat-card">
         <div className="inf-stat-label">Mejor día</div>
         <div className={`inf-stat-value inf-mono ${resumen.mejorDia && resumen.mejorDia[1] >= 0 ? "inf-win" : "inf-loss"}`}>
-          {resumen.mejorDia ? fmtMoney(resumen.mejorDia[1]) : "\u2014"}
+          {resumen.mejorDia ? <span className="importe">{fmtMoney(resumen.mejorDia[1])}</span> : "\u2014"}
         </div>
         <div className="inf-stat-sub">{resumen.mejorDia ? fmtDateShort(resumen.mejorDia[0]) : ""}</div>
       </div>
@@ -522,7 +526,7 @@ function EquityPanel({ data }) {
               </defs>
               <CartesianGrid stroke="#2A3648" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="idx" stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} />
-              <YAxis stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} width={70} tickFormatter={(v) => `${v.toLocaleString("es-ES")} $`} />
+              <YAxis stroke="#8C99AA" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} width={70} tickFormatter={(v) => enmascarar(`${v.toLocaleString("es-ES")} $`)} />
               <ReferenceLine y={0} stroke="#2A3648" />
               <Tooltip contentStyle={{ background: "#1D2733", border: "1px solid #2A3648", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }} itemStyle={{ color: "#E7ECF2" }} labelStyle={{ color: "#8C99AA", marginBottom: 4 }} labelFormatter={(v, p) => (p && p[0] ? fmtDateShort(p[0].payload.fecha) : v)} formatter={(v) => [fmtMoney(v), "Capital acumulado"]} />
               <Area type="monotone" dataKey="capital" stroke="#C9A23F" strokeWidth={2} fill="url(#infGrad)" />

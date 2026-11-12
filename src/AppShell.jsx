@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2, RefreshCw, Mail } from "lucide-react";
+import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2, RefreshCw, Mail, Eye, EyeOff } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { descargarMisDatos, borrarCuenta } from "./misDatos";
 import { FIRMAS_SUGERIDAS, cargarEmpresas, tieneDatosContables, crearLista } from "./empresasUsuario";
 import { BienvenidaFirmas, ModalMisFirmas } from "./MisFirmas";
 import { cargarOCrearPerfil, guardarAceptaCorreos } from "./perfil";
 import { filtroInicial } from "./utils/periodo";
+import { setOcultarImportes, leerOcultarGuardado, guardarOcultar, CSS_OCULTAR_IMPORTES } from "./utils/importes";
 
 const PALABRA_ELIMINAR = "ELIMINAR";
 import TradingJournal from "./TradingJournal";
@@ -26,6 +27,34 @@ export default function AppShell({ session, onLogout }) {
   const contabilidadEmpresa = filtroFondeo.empresa; // "GENERAL" = todas: es también el subapartado activo del menú
   const setContabilidadEmpresa = useCallback((empresa) => setFiltroFondeo((f) => ({ ...f, empresa })), []);
   const [collapsed, setCollapsed] = useState(false);
+  // Modo «ocultar importes» (grabar pantalla sin enseñar cifras). Se fija en el módulo antes
+  // de pintar las páginas para que sus formateadores ya lo vean en este mismo render.
+  const [ocultarImportes, setOcultarImportesEstado] = useState(() => leerOcultarGuardado());
+  setOcultarImportes(ocultarImportes);
+  useEffect(() => {
+    // En <html> y no solo en .shell-root: algunos modales (imagen operativa) van por portal a <body>.
+    document.documentElement.classList.toggle("ocultar-importes", ocultarImportes);
+    return () => document.documentElement.classList.remove("ocultar-importes");
+  }, [ocultarImportes]);
+  useEffect(() => () => setOcultarImportes(false), []);
+  function alternarImportes() {
+    setOcultarImportesEstado((v) => {
+      guardarOcultar(!v);
+      return !v;
+    });
+  }
+  const etiquetaOjo = ocultarImportes ? "Mostrar importes" : "Ocultar importes";
+  const botonOjo = (clase) => (
+    <button
+      className={`shell-icon-btn shell-ojo-btn ${clase} ${ocultarImportes ? "activo" : ""}`}
+      onClick={alternarImportes}
+      aria-label={etiquetaOjo}
+      aria-pressed={ocultarImportes}
+      title={etiquetaOjo}
+    >
+      {ocultarImportes ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
+  );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPass1, setNewPass1] = useState("");
@@ -218,7 +247,7 @@ export default function AppShell({ session, onLogout }) {
   }
 
   return (
-    <div className="shell-root">
+    <div className={`shell-root ${ocultarImportes ? "ocultar-importes" : ""}`}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
         .shell-root { display: flex; min-height: 100vh; background: #0E1520; }
@@ -237,6 +266,13 @@ export default function AppShell({ session, onLogout }) {
         .shell-monogram { flex-shrink: 0; display: inline-flex; }
         .shell-collapse-btn { margin-left: auto; }
         .shell-sidebar.collapsed .shell-collapse-btn { margin-left: 0; }
+        .shell-sidebar.collapsed .shell-brand { flex-direction: column; gap: 8px; }
+        .shell-ojo-btn.activo { color: #C6A15A; background: rgba(198, 161, 90, 0.12); }
+        .shell-ojo-lateral { margin-left: auto; }
+        .shell-sidebar.collapsed .shell-ojo-lateral { margin-left: 0; }
+        .shell-ojo-lateral + .shell-collapse-btn { margin-left: 0; }
+        .shell-ojo-movil { margin-left: auto; }
+${CSS_OCULTAR_IMPORTES}
         .shell-nav { padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; overflow-y: auto; }
         .shell-nav-btn {
           display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
@@ -365,6 +401,7 @@ export default function AppShell({ session, onLogout }) {
 
           .shell-brand { display: flex; }
           .shell-collapse-btn { display: none; }
+          .shell-ojo-lateral { display: none; }
           .shell-nav { flex-direction: column; padding: 14px 10px; overflow-x: visible; gap: 4px; }
           .shell-nav-btn, .shell-sidebar.collapsed .shell-nav-btn { width: 100%; padding: 10px 12px; justify-content: flex-start; }
           .shell-nav-label, .nav-label { display: inline; }
@@ -393,6 +430,7 @@ export default function AppShell({ session, onLogout }) {
           </svg>
         </span>
         <span className="shell-mobile-brand-text">Bitácora</span>
+        {botonOjo("shell-ojo-movil")}
       </div>
 
       {mobileMenuOpen && (
@@ -410,6 +448,7 @@ export default function AppShell({ session, onLogout }) {
             </svg>
           </span>
           {!collapsed && <span className="shell-brand-text">Bitácora</span>}
+          {botonOjo("shell-ojo-lateral")}
           <button
             className="shell-icon-btn shell-collapse-btn"
             onClick={() => setCollapsed((c) => !c)}
