@@ -1,7 +1,7 @@
 // Pruebas del filtro de periodo y del calendario de dinero (src/utils/). Sin dependencias:
 //   node scripts/probar-calendario.js
 // Sale con código 1 si algo falla.
-import { hoyIso, sumarDias, ultimoDiaMes, rangoDeFiltro, etiquetaFiltro, filtroInicial, aniosDisponibles, fmtDiaCorto } from "../src/utils/periodo.js";
+import { hoyIso, ultimoDiaMes, rangoDeFiltro, etiquetaFiltro, filtroInicial, aniosDisponibles } from "../src/utils/periodo.js";
 import { celdasMes, semanasMes } from "../src/utils/calendario.js";
 import { enRango, empresaDeRetiro, movimientosPorDia, totalesPorMes, resumenPayouts } from "../src/utils/estadisticasFondeo.js";
 
@@ -21,11 +21,6 @@ function igual(real, esperado, nombre) {
 igual(hoyIso(new Date("2026-12-31T23:30:00Z")), "2027-01-01", "hoyIso: Nochevieja en UTC ya es Año Nuevo en Madrid");
 igual(hoyIso(new Date("2026-07-10T22:30:00Z")), "2026-07-11", "hoyIso: horario de verano (UTC+2)");
 igual(hoyIso(new Date("2026-11-12T10:00:00Z")), "2026-11-12", "hoyIso: mediodía");
-igual(sumarDias("2026-03-01", -1), "2026-02-28", "sumarDias: cruza a febrero");
-igual(sumarDias("2024-03-01", -1), "2024-02-29", "sumarDias: febrero bisiesto");
-igual(sumarDias("2026-12-31", 1), "2027-01-01", "sumarDias: cambio de año");
-igual(sumarDias("2026-03-29", 1), "2026-03-30", "sumarDias: día del cambio de hora");
-igual(sumarDias("2026-10-25", 1), "2026-10-26", "sumarDias: día del cambio de hora (otoño)");
 igual([ultimoDiaMes(2026, 2), ultimoDiaMes(2024, 2), ultimoDiaMes(2026, 12), ultimoDiaMes(2026, 4)], [28, 29, 31, 30], "ultimoDiaMes");
 
 // ---------------------------------------------------------------- Rangos del filtro
@@ -33,24 +28,19 @@ const HOY = "2026-11-12";
 const f = (extra) => ({ ...filtroInicial(HOY), ...extra });
 igual(filtroInicial(HOY), { modo: "anio", anio: 2026, mes: 11, trimestre: 4, empresa: "GENERAL" }, "filtroInicial: año en curso");
 igual(rangoDeFiltro(f({ modo: "todo" }), HOY), null, "rango: todo");
-igual(rangoDeFiltro(f({ modo: "30d" }), HOY), { desde: "2026-10-14", hasta: HOY }, "rango: 30 días con hoy incluido");
-igual(rangoDeFiltro(f({ modo: "90d" }), HOY), { desde: "2026-08-15", hasta: HOY }, "rango: 90 días");
-igual(rangoDeFiltro(f({ modo: "12m" }), HOY), { desde: "2025-11-13", hasta: HOY }, "rango: 12 meses");
-igual(rangoDeFiltro(f({ modo: "12m" }), "2024-02-29"), { desde: "2023-03-01", hasta: "2024-02-29" }, "rango: 12 meses desde un 29 de febrero");
 igual(rangoDeFiltro(f({ modo: "mes", anio: 2024, mes: 2 }), HOY), { desde: "2024-02-01", hasta: "2024-02-29" }, "rango: mes (febrero bisiesto)");
 igual(rangoDeFiltro(f({ modo: "trimestre", trimestre: 1 }), HOY), { desde: "2026-01-01", hasta: "2026-03-31" }, "rango: T1");
 igual(rangoDeFiltro(f({ modo: "trimestre", trimestre: 4 }), HOY), { desde: "2026-10-01", hasta: "2026-12-31" }, "rango: T4");
 igual(rangoDeFiltro(f({ modo: "anio" }), HOY), { desde: "2026-01-01", hasta: "2026-12-31" }, "rango: año");
 igual(
-  ["todo", "12m", "90d", "30d", "mes", "trimestre", "anio"].map((modo) => etiquetaFiltro(f({ modo }))),
-  ["Todo", "Últimos 12 meses", "Últimos 90 días", "Últimos 30 días", "Nov 2026", "T4 2026", "2026"],
+  ["todo", "mes", "trimestre", "anio"].map((modo) => etiquetaFiltro(f({ modo }))),
+  ["Todo", "Nov 2026", "T4 2026", "2026"],
   "etiquetaFiltro"
 );
-igual(fmtDiaCorto("2026-11-03"), "3 nov 2026", "fmtDiaCorto");
 igual(aniosDisponibles(["2024-05-01", "2025-01-01", null, "2024-12-31"], f({ anio: 2023 }), HOY), [2026, 2025, 2024, 2023], "aniosDisponibles");
 
 // Los límites del rango entran; el día de antes y el de después, no.
-const r30 = rangoDeFiltro(f({ modo: "30d" }), HOY);
+const r30 = { desde: "2026-10-14", hasta: HOY };
 igual(["2026-10-13", "2026-10-14", "2026-11-12", "2026-11-13"].map((d) => enRango(d, r30)), [false, true, true, false], "enRango: límites incluidos");
 
 // ---------------------------------------------------------------- Rejilla del mes

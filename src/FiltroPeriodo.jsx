@@ -1,7 +1,7 @@
 import React from "react";
 import {
   MODOS, MESES_CORTOS, TRIMESTRES, TODAS_EMPRESAS,
-  hoyIso, partesIso, trimestreDe, rangoDeFiltro, fmtDiaCorto,
+  hoyIso, partesIso, trimestreDe,
 } from "./utils/periodo";
 
 // Barra del filtro global de periodo y empresa. La comparten Payouts y Contabilidad; el estado vive
@@ -11,8 +11,6 @@ import {
 export default function FiltroPeriodo({ filtro, onCambio, empresas = [], anios = [], hoy = hoyIso() }) {
   const hoyP = partesIso(hoy);
   const conAnio = filtro.modo === "mes" || filtro.modo === "trimestre" || filtro.modo === "anio";
-  const movil = filtro.modo === "12m" || filtro.modo === "90d" || filtro.modo === "30d";
-  const rango = rangoDeFiltro(filtro, hoy);
   const cambiar = (parche) => onCambio({ ...filtro, ...parche });
 
   const listaAnios = anios.includes(filtro.anio) ? anios : [filtro.anio, ...anios].sort((a, b) => b - a);
@@ -112,9 +110,6 @@ export default function FiltroPeriodo({ filtro, onCambio, empresas = [], anios =
         </div>
       )}
 
-      {movil && rango && (
-        <div className="fp-nota">Del {fmtDiaCorto(rango.desde)} al {fmtDiaCorto(rango.hasta)}</div>
-      )}
     </div>
   );
 }
