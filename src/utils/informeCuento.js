@@ -129,6 +129,220 @@ export function reglasValidas(f) {
   );
 }
 
+// ---------------------------------------------------------------- Reglas por semana
+// configuracion.reglas_informe guarda un «plan» de reglas:
+//   { version: 2,
+//     versiones: [{ desde: "YYYY-MM-DD" (lunes), valores: { CLAVES_JSON…, riesgoPct, riesgoMinimo },
+//                   fijas: { R1: { activa, titulo } … }, propias: [{ id, titulo, norma }] }],
+//     marcas: { "YYYY-MM-DD" (lunes): { idPropia: "ok" | "rota" } } }
+// Cada semana usa la versión con el `desde` más reciente que no pase de su lunes; si no hay
+// ninguna, los valores por defecto. Guardar en una semana crea (o pisa) la versión de esa semana,
+// así que las semanas anteriores siguen con las reglas que tenían. Las reglas propias no se pueden
+// calcular: se marcan a mano cada semana (`marcas`).
+// El formato antiguo (los valores sueltos, sin `versiones`) se lee como una versión desde siempre.
+//
+// El riesgo (% y mínimo) es además el de Cuentas activas (columnas riesgo_pct_funded / riesgo_minimo):
+// la versión vigente hoy lo toma de esas columnas y las demás, de lo que guardaron.
+export const DESDE_SIEMPRE = "0000-01-01";
+export const REGLAS_FIJAS = [
+  { id: "R1", titulo: "Compras tras un retiro" },
+  { id: "R2", titulo: "Compras tras quemar una funded" },
+  { id: "R3", titulo: "Riesgo por trade en funded" },
+  { id: "R4", titulo: "Cuentas por sesión" },
+];
+const MAX_TITULO = 120;
+const MAX_NORMA = 300;
+const texto = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+const esLunesIso = (iso) => !!partesIso(iso) && lunesDe(iso) === iso;
+
+function limpiarVersion(v) {
+  if (!v || typeof v !== "object") return null;
+  const desde = v.desde === DESDE_SIEMPRE || esLunesIso(v.desde) ? v.desde : null;
+  if (!desde) return null;
+  const valores = v.valores && typeof v.valores === "object" ? { ...v.valores } : {};
+  const fijas = {};
+  REGLAS_FIJAS.forEach(({ id }) => {
+    const f = v.fijas?.[id];
+    if (f && typeof f === "object") fijas[id] = { activa: f.activa !== false, titulo: texto(f.titulo, MAX_TITULO) };
+  });
+  const vistos = new Set();
+  const propias = (Array.isArray(v.propias) ? v.propias : [])
+    .map((p) => ({ id: texto(p?.id, 40), titulo: texto(p?.titulo, MAX_TITULO), norma: texto(p?.norma, MAX_NORMA) }))
+    .filter((p) => p.id && p.titulo && !vistos.has(p.id) && vistos.add(p.id));
+  return { desde, valores, fijas, propias };
+}
+
+// jsonb guardado (o null) → plan limpio, con las versiones ordenadas por fecha.
+export function leerPlanReglas(guardado) {
+  const g = guardado && typeof guardado === "object" ? guardado : null;
+  if (!g) return { versiones: [], marcas: {} };
+  if (!Array.isArray(g.versiones)) {
+    return { versiones: [{ desde: DESDE_SIEMPRE, valores: { ...g }, fijas: {}, propias: [] }], marcas: {} };
+  }
+  const porFecha = new Map();
+  g.versiones.map(limpiarVersion).filter(Boolean).forEach((v) => porFecha.set(v.desde, v));
+  const marcas = {};
+  Object.entries(g.marcas && typeof g.marcas === "object" ? g.marcas : {}).forEach(([lunes, m]) => {
+    if (!esLunesIso(lunes) || !m || typeof m !== "object") return;
+    const limpias = Object.fromEntries(Object.entries(m).filter(([, e]) => e === "ok" || e === "rota"));
+    if (Object.keys(limpias).length) marcas[lunes] = limpias;
+  });
+  return { versiones: [...porFecha.values()].sort((a, b) => (a.desde < b.desde ? -1 : 1)), marcas };
+}
+
+// Plan → lo que se guarda en configuracion.reglas_informe.
+export function serializarPlanReglas(plan) {
+  return { version: 2, versiones: plan.versiones, marcas: plan.marcas };
+}
+
+// Versión vigente la semana del lunes dado (o null: valores por defecto).
+export function versionDeSemana(plan, lunes) {
+  let vigente = null;
+  plan.versiones.forEach((v) => {
+    if (v.desde <= lunes) vigente = v;
+  });
+  return vigente;
+}
+
+// Reglas de una semana: { desde, hastaAntesDe, valores, fijas, propias }. `desde` es el lunes en
+// que empezó la versión (null = valores por defecto) y `hastaAntesDe`, el de la siguiente (o null).
+export function reglasDeSemana(plan, lunes, { config = null, lunesHoy = null } = {}) {
+  const v = versionDeSemana(plan, lunes);
+  const siguiente = plan.versiones.find((x) => x.desde > lunes) || null;
+  const vigenteHoy = lunesHoy ? versionDeSemana(plan, lunesHoy) : null;
+  const usaColumnas = !v || !lunesHoy || v === vigenteHoy;
+  const guardado = v?.valores || {};
+  const riesgo = usaColumnas
+    ? config
+    : {
+        riesgo_pct_funded: guardado.riesgoPct ?? config?.riesgo_pct_funded,
+        riesgo_minimo: guardado.riesgoMinimo ?? config?.riesgo_minimo,
+      };
+  const fijas = Object.fromEntries(
+    REGLAS_FIJAS.map(({ id, titulo }) => {
+      const f = v?.fijas?.[id];
+      return [id, { activa: f ? f.activa : true, titulo: f?.titulo || titulo }];
+    })
+  );
+  return {
+    desde: v && v.desde !== DESDE_SIEMPRE ? v.desde : null,
+    hastaAntesDe: siguiente ? siguiente.desde : null,
+    valores: normalizarReglas(guardado, riesgo),
+    fijas,
+    propias: (v?.propias || []).map((p) => ({ ...p })),
+  };
+}
+
+// Guarda las reglas de la semana `lunes` (pisa la versión de esa semana si ya había una).
+// Si con ello cambia la versión vigente hoy, la que lo era se queda con el riesgo de las
+// columnas (config), para que esas semanas no cambien al editar el riesgo después.
+export function guardarVersion(plan, lunes, { valores, fijas, propias }, { config = null, lunesHoy = null } = {}) {
+  const antes = lunesHoy ? versionDeSemana(plan, lunesHoy) : null;
+  const nueva = limpiarVersion({
+    desde: lunes,
+    valores: Object.fromEntries([...CLAVES_JSON, "riesgoPct", "riesgoMinimo"].map((k) => [k, valores[k]])),
+    fijas: Object.fromEntries(REGLAS_FIJAS.map(({ id, titulo }) => {
+      const f = fijas?.[id] || {};
+      const t = texto(f.titulo, MAX_TITULO);
+      return [id, { activa: f.activa !== false, titulo: t === titulo ? "" : t }];
+    })),
+    propias,
+  });
+  const versiones = plan.versiones.filter((v) => v.desde !== lunes).map((v) => ({ ...v, valores: { ...v.valores } }));
+  versiones.push(nueva);
+  versiones.sort((a, b) => (a.desde < b.desde ? -1 : 1));
+  const resultado = { versiones, marcas: plan.marcas };
+  congelarRiesgo(resultado, antes, lunesHoy, config);
+  return resultado;
+}
+
+// Borra la versión de la semana `lunes`: esa semana vuelve a las reglas de antes.
+export function quitarVersion(plan, lunes, { config = null, lunesHoy = null } = {}) {
+  const antes = lunesHoy ? versionDeSemana(plan, lunesHoy) : null;
+  const resultado = { versiones: plan.versiones.filter((v) => v.desde !== lunes).map((v) => ({ ...v, valores: { ...v.valores } })), marcas: plan.marcas };
+  congelarRiesgo(resultado, antes, lunesHoy, config);
+  return resultado;
+}
+
+function congelarRiesgo(plan, antes, lunesHoy, config) {
+  if (!antes || !lunesHoy || !config) return;
+  const ahora = versionDeSemana(plan, lunesHoy);
+  const vieja = plan.versiones.find((v) => v.desde === antes.desde);
+  if (!vieja || (ahora && ahora.desde === vieja.desde)) return;
+  if (Number(config.riesgo_pct_funded) > 0) vieja.valores.riesgoPct = Number(config.riesgo_pct_funded);
+  if (config.riesgo_minimo != null && config.riesgo_minimo !== "") vieja.valores.riesgoMinimo = Number(config.riesgo_minimo);
+}
+
+// Marca una regla propia de la semana `lunes`: "ok", "rota" o null (sin marcar).
+export function marcarReglaPropia(plan, lunes, id, estado) {
+  const semana = { ...(plan.marcas[lunes] || {}) };
+  if (estado === "ok" || estado === "rota") semana[id] = estado;
+  else delete semana[id];
+  const marcas = { ...plan.marcas };
+  if (Object.keys(semana).length) marcas[lunes] = semana;
+  else delete marcas[lunes];
+  return { versiones: plan.versiones, marcas };
+}
+
+// Reglas propias de un periodo, ya juzgadas. En una semana, la marca de esa semana; en un mes,
+// las semanas cuyo lunes cae en él: rota si alguna se rompió, cumplida si todas las marcadas se
+// cumplieron, sin marcar si no hay ninguna marca. La lista es la de las reglas vigentes al final
+// del periodo.
+export function reglasPropiasDelPeriodo(plan, desde, hasta, periodo = "semana") {
+  const ultimo = lunesDe(hasta);
+  const lista = reglasDeSemana(plan, ultimo).propias;
+  const lunesDelPeriodo = [];
+  for (let l = periodo === "mes" ? lunesDe(desde) : ultimo; l <= ultimo; l = sumarDias(l, 7)) {
+    if (periodo !== "mes" || l >= desde) lunesDelPeriodo.push(l);
+  }
+  return lista.map((p) => {
+    const marcas = lunesDelPeriodo
+      .filter((l) => reglasDeSemana(plan, l).propias.some((x) => x.id === p.id))
+      .map((l) => plan.marcas[l]?.[p.id])
+      .filter(Boolean);
+    const rotas = marcas.filter((e) => e === "rota").length;
+    const estado = rotas ? "rota" : marcas.length ? "ok" : "pendiente";
+    let resumen = null;
+    if (periodo === "mes" && marcas.length) resumen = `Cumplida ${marcas.length - rotas} de ${plural(marcas.length, "semana marcada", "semanas marcadas")}.`;
+    else if (estado === "pendiente") resumen = periodo === "mes" ? "Sin marcar ninguna semana de este mes." : "Marca si la has cumplido esta semana.";
+    return { ...p, estado, resumen };
+  });
+}
+
+// ¿Cambiaron las reglas dentro del periodo? (la primera semana y la última usan versiones distintas)
+export function reglasCambianEnPeriodo(plan, desde, hasta) {
+  return versionDeSemana(plan, lunesDe(desde)) !== versionDeSemana(plan, lunesDe(hasta));
+}
+
+// Quita las reglas automáticas apagadas, pone los títulos del usuario y añade las propias
+// (numeradas a partir de R5) con la misma forma que las automáticas.
+export function aplicarAjustesReglas(automaticas, fijas = {}, propias = []) {
+  const fijasFinal = automaticas
+    .filter((r) => fijas[r.id]?.activa !== false)
+    .map((r) => (fijas[r.id]?.titulo ? { ...r, titulo: fijas[r.id].titulo } : r));
+  const extra = propias.map((p, i) => ({
+    id: `R${REGLAS_FIJAS.length + i + 1}`,
+    clave: p.id,
+    propia: true,
+    titulo: p.titulo,
+    norma: p.norma || "",
+    estado: p.estado || "pendiente",
+    resumen: p.resumen || null,
+    incumplimientos: [],
+    avisos: [],
+  }));
+  return [...fijasFinal, ...extra];
+}
+
+// ¿Es válido lo editable de una versión? (los valores, más títulos no vacíos)
+export function ajustesValidos({ valores, fijas = {}, propias = [] }) {
+  return (
+    reglasValidas(valores) &&
+    REGLAS_FIJAS.every(({ id }) => !fijas[id] || texto(fijas[id].titulo, MAX_TITULO) !== "") &&
+    propias.every((p) => texto(p.titulo, MAX_TITULO) !== "")
+  );
+}
+
 // ---------------------------------------------------------------- Textos
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 const dinero = (n, moneda = "$") => ({ dinero: n, moneda });
@@ -164,7 +378,9 @@ function compararTrades(a, b) {
 
 // Informe de un periodo [desde, hasta] (ambos incluidos). `periodo` solo cambia los textos
 // ("semana" | "mes").
-export function construirInforme({ desde, hasta, periodo = "semana", trades = [], cuentas = [], retiros = [], compras = [], diario = [], reglas = REGLAS_POR_DEFECTO }) {
+// `fijas` ({ R1: { activa, titulo } }) apaga o renombra las reglas automáticas y `propias` (las de
+// reglasPropiasDelPeriodo) se añaden detrás; ver reglasDeSemana().
+export function construirInforme({ desde, hasta, periodo = "semana", trades = [], cuentas = [], retiros = [], compras = [], diario = [], reglas = REGLAS_POR_DEFECTO, fijas = {}, propias = [] }) {
   const cuentaPorNombre = new Map(cuentas.map((c) => [c.nombre, c]));
   const tipoDe = (t) => {
     const c = cuentaPorNombre.get(t.cuenta);
@@ -265,7 +481,7 @@ export function construirInforme({ desde, hasta, periodo = "semana", trades = []
     dias,
     marcador,
     moraleja,
-    reglas: evaluarReglas({ desde, hasta, periodo, trades, cuentas, retiros, compras, reglas }),
+    reglas: aplicarAjustesReglas(evaluarReglas({ desde, hasta, periodo, trades, cuentas, retiros, compras, reglas }), fijas, propias),
   };
   informe.frase = frasePortada(informe);
   return informe;
@@ -551,7 +767,7 @@ export function exportarParaVideo(inf, { proximo = "" } = {}) {
     reglas: inf.reglas.map((r) => ({
       regla: r.id,
       titulo: r.titulo,
-      cumplida: r.estado === "ok",
+      cumplida: r.estado === "pendiente" ? null : r.estado === "ok", // null: regla propia sin marcar
       incumplimientos: r.incumplimientos.map((x) => textoPlano(x.partes)),
       avisos: r.avisos.map((x) => textoPlano(x.partes)),
     })),

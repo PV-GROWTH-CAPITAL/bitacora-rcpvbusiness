@@ -5,10 +5,10 @@
 import React, { useState } from "react";
 import {
   Flame, Trophy, Banknote, ShoppingCart, CheckCircle2, XCircle, AlertTriangle, Settings2,
-  Check, X, Pencil, Trash2, Quote, CalendarClock,
+  Check, X, Pencil, Trash2, Quote, CalendarClock, CircleDashed, Plus,
 } from "lucide-react";
 import { enmascarar } from "./utils/importes";
-import { fechaCorta, reglasValidas, REGLAS_POR_DEFECTO } from "./utils/informeCuento";
+import { fechaCorta, ajustesValidos, REGLAS_POR_DEFECTO, REGLAS_FIJAS } from "./utils/informeCuento";
 
 // Mismo formato que el resto de Informes: signo, dos decimales y el modo «ocultar importes».
 function fmtDinero(n, moneda = "$", conSigno = true) {
@@ -83,12 +83,16 @@ export const ESTILOS_CUENTO = `
   .cu-regla-icono { margin-top: 1px; }
   .cu-regla.ok .cu-regla-icono { color: var(--win); }
   .cu-regla.rota .cu-regla-icono { color: var(--loss); }
+  .cu-regla.pendiente .cu-regla-icono { color: var(--text-dim); }
   .cu-regla-titulo { font-size: 14px; font-weight: 600; }
   .cu-regla-id { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; color: var(--text-dim); margin-right: 8px; }
   .cu-regla-norma { font-size: 12px; color: var(--text-dim); margin-top: 3px; line-height: 1.45; }
   .cu-pastilla { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
   .cu-pastilla.ok { background: var(--win-dim); color: #CFEBDC; }
   .cu-pastilla.rota { background: var(--loss-dim); color: #F5D9D3; }
+  .cu-pastilla.pendiente { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); }
+  .cu-regla-lado { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .cu-regla-propia { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--accent); border: 1px solid var(--accent-dim); border-radius: 4px; padding: 1px 5px; margin-left: 8px; vertical-align: 1px; font-weight: 500; }
   .cu-regla-detalle { grid-column: 2 / -1; margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
   .cu-linea { display: flex; gap: 8px; font-size: 12.5px; line-height: 1.45; align-items: flex-start; }
   .cu-linea svg { flex-shrink: 0; margin-top: 2px; }
@@ -152,6 +156,16 @@ export const ESTILOS_CUENTO = `
   .cu-fila input:disabled { opacity: 0.55; }
   .cu-modal-acciones { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
   .cu-error { color: #F0C2B9; font-size: 12px; margin-top: 8px; }
+  .cu-grupo-cab { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .cu-grupo-cab .cu-input { font-weight: 600; }
+  .cu-grupo-id { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); min-width: 22px; }
+  .cu-grupo.apagada .cu-fila, .cu-grupo.apagada .cu-pie { opacity: 0.45; }
+  .cu-interruptor { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+  .cu-interruptor input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+  .cu-propia-edit { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+  .cu-propia-edit textarea { resize: vertical; min-height: 38px; }
+  .cu-btn-linea { background: transparent; border: 1px dashed var(--border); color: var(--text-dim); border-radius: 8px; padding: 9px 12px; font-size: 13px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-family: inherit; margin: 4px 0 10px; }
+  .cu-btn-linea:hover { color: var(--text); border-color: var(--accent-dim); }
 
   @media (max-width: 640px) {
     .cu-portada { padding: 20px 18px 18px; }
@@ -159,7 +173,7 @@ export const ESTILOS_CUENTO = `
     .cu-frase { font-size: 14.5px; }
     .cu-capitulos { grid-template-columns: 1fr; }
     .cu-regla { grid-template-columns: 22px 1fr; }
-    .cu-regla .cu-pastilla { grid-column: 2; justify-self: start; margin-top: 6px; }
+    .cu-regla .cu-regla-lado { grid-column: 2; justify-content: flex-start; margin-top: 6px; }
     .cu-regla-detalle { grid-column: 1 / -1; }
     .cu-moraleja-cifras { flex-wrap: wrap; gap: 14px 22px; }
     .cu-form { flex-wrap: wrap; }
@@ -320,41 +334,67 @@ export function Marcador({ informe }) {
 }
 
 // ------------------------------------------------------------------ Semáforo de reglas
-export function Semaforo({ informe, onMisReglas }) {
+const PASTILLA = { ok: "Cumplida", rota: "Rota", pendiente: "Sin marcar" };
+const ICONO_REGLA = { ok: CheckCircle2, rota: XCircle, pendiente: CircleDashed };
+
+// onMarcar(regla, "ok" | "rota" | null): solo en la semana, para las reglas propias (se marcan a
+// mano). notaCambio: texto si las reglas cambiaron dentro del periodo.
+export function Semaforo({ informe, onMisReglas, onMarcar, ocupado, notaCambio }) {
   const cumplidas = informe.reglas.filter((r) => r.estado === "ok").length;
+  const sinMarcar = informe.reglas.filter((r) => r.estado === "pendiente").length;
+  const elPeriodo = informe.periodo === "mes" ? "este mes" : "esta semana";
   return (
     <div className="cu-seccion">
       <div className="cu-seccion-cab">
         <div>
           <div className="cu-seccion-titulo">Mis reglas</div>
-          <div className="cu-seccion-sub" style={{ marginTop: 3 }}>{cumplidas} de {informe.reglas.length} cumplidas {informe.periodo === "mes" ? "este mes" : "esta semana"}</div>
-        </div>
-        {onMisReglas && <button className="inf-btn" onClick={onMisReglas}><Settings2 size={13} /> Ajustar mis reglas</button>}
-      </div>
-      <div className="cu-reglas">
-        {informe.reglas.map((r) => (
-          <div key={r.id} className={`cu-regla ${r.estado}`}>
-            <div className="cu-regla-icono">{r.estado === "ok" ? <CheckCircle2 size={20} /> : <XCircle size={20} />}</div>
-            <div>
-              <div className="cu-regla-titulo"><span className="cu-regla-id">{r.id}</span>{r.titulo}</div>
-              <div className="cu-regla-norma">{r.norma}</div>
-            </div>
-            <div className={`cu-pastilla ${r.estado}`}>{r.estado === "ok" ? "Cumplida" : "Rota"}</div>
-            {(r.resumen || r.incumplimientos.length > 0 || r.avisos.length > 0) && (
-              <div className="cu-regla-detalle">
-                {r.resumen && <div className="cu-linea bien">{r.resumen}</div>}
-                {r.incumplimientos.map((x, i) => (
-                  <div key={`f${i}`} className="cu-linea falta"><X size={13} /> <span><Partes partes={x.partes} /></span></div>
-                ))}
-                {r.avisos.map((x, i) => (
-                  <div key={`a${i}`} className="cu-linea aviso"><AlertTriangle size={13} /> <span><Partes partes={x.partes} /></span></div>
-                ))}
-                {r.nota && (r.incumplimientos.length > 0 || r.avisos.length > 0) && <div className="cu-regla-nota">{r.nota}</div>}
-              </div>
-            )}
+          <div className="cu-seccion-sub" style={{ marginTop: 3 }}>
+            {informe.reglas.length === 0 ? `Ninguna regla activa ${elPeriodo}` : `${cumplidas} de ${informe.reglas.length} cumplidas ${elPeriodo}${sinMarcar ? ` · ${sinMarcar} sin marcar` : ""}`}
           </div>
-        ))}
+        </div>
+        {onMisReglas && <button className="inf-btn" onClick={onMisReglas}><Settings2 size={13} /> Cambiar las reglas de esta semana</button>}
       </div>
+      {notaCambio && <div className="cu-aviso">{notaCambio}</div>}
+      {informe.reglas.length > 0 && (
+        <div className="cu-reglas">
+          {informe.reglas.map((r) => {
+            const Icono = ICONO_REGLA[r.estado] || CircleDashed;
+            return (
+              <div key={r.clave || r.id} className={`cu-regla ${r.estado}`}>
+                <div className="cu-regla-icono"><Icono size={20} /></div>
+                <div style={{ minWidth: 0 }}>
+                  <div className="cu-regla-titulo" style={{ overflowWrap: "anywhere" }}>
+                    <span className="cu-regla-id">{r.id}</span>{r.titulo}
+                    {r.propia && <span className="cu-regla-propia" title="Regla tuya: la marcas tú cada semana">A MANO</span>}
+                  </div>
+                  {r.norma && <div className="cu-regla-norma" style={{ overflowWrap: "anywhere" }}>{r.norma}</div>}
+                </div>
+                <div className="cu-regla-lado">
+                  {r.propia && onMarcar && (
+                    <div className="cu-estado-grupo">
+                      <button className={`cu-estado-btn logrado ${r.estado === "ok" ? "active" : ""}`} disabled={ocupado} onClick={() => onMarcar(r, r.estado === "ok" ? null : "ok")} title="La cumplí" aria-label="La cumplí"><Check size={14} /></button>
+                      <button className={`cu-estado-btn fallido ${r.estado === "rota" ? "active" : ""}`} disabled={ocupado} onClick={() => onMarcar(r, r.estado === "rota" ? null : "rota")} title="No la cumplí" aria-label="No la cumplí"><X size={14} /></button>
+                    </div>
+                  )}
+                  <div className={`cu-pastilla ${r.estado}`}>{PASTILLA[r.estado] || PASTILLA.pendiente}</div>
+                </div>
+                {(r.resumen || r.incumplimientos.length > 0 || r.avisos.length > 0) && (
+                  <div className="cu-regla-detalle">
+                    {r.resumen && <div className="cu-linea bien">{r.resumen}</div>}
+                    {r.incumplimientos.map((x, i) => (
+                      <div key={`f${i}`} className="cu-linea falta"><X size={13} /> <span><Partes partes={x.partes} /></span></div>
+                    ))}
+                    {r.avisos.map((x, i) => (
+                      <div key={`a${i}`} className="cu-linea aviso"><AlertTriangle size={13} /> <span><Partes partes={x.partes} /></span></div>
+                    ))}
+                    {r.nota && (r.incumplimientos.length > 0 || r.avisos.length > 0) && <div className="cu-regla-nota">{r.nota}</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -428,15 +468,15 @@ export function Compromiso({ compromisos, proximos, etiqueta, etiquetaProxima, o
   return (
     <div className="cu-seccion">
       <div className="cu-seccion-cab">
-        <div className="cu-seccion-titulo">El compromiso</div>
+        <div className="cu-seccion-titulo">{compromisos.length + proximos.length > 1 ? "Los compromisos" : "El compromiso"}</div>
         <div className="cu-seccion-sub">Se guarda como objetivo semanal en Objetivos</div>
       </div>
       <div className="cu-compromiso">
         <div className="cu-tarjeta">
           <div className="cu-eyebrow">Semana del {etiqueta}</div>
-          <div className="cu-tarjeta-titulo">¿La cumpliste?</div>
+          <div className="cu-tarjeta-titulo">{compromisos.length > 1 ? "¿Los cumpliste?" : "¿Lo cumpliste?"}</div>
           {compromisos.length === 0 ? (
-            <div className="cu-tarjeta-vacia">No había ningún compromiso para esta semana. Escribe el de la siguiente y, en su informe, te preguntaré si lo has cumplido.</div>
+            <div className="cu-tarjeta-vacia">No había ningún compromiso para esta semana. Escribe los de la siguiente y, en su informe, te preguntaré si los has cumplido.</div>
           ) : (
             compromisos.map((o) => {
               const estado = ESTADOS[o.estado] ? o.estado : "pendiente";
@@ -469,22 +509,20 @@ export function Compromiso({ compromisos, proximos, etiqueta, etiquetaProxima, o
               </div>
             </div>
           ))}
-          {(proximos.length === 0 || editando) && (
-            <form className="cu-form" onSubmit={enviar}>
-              <input
-                className="cu-input"
-                value={texto}
-                onChange={(e) => setTexto(e.target.value)}
-                placeholder="Ej. Solo opero dos cuentas por sesión"
-                maxLength={200}
-                aria-label="Regla o compromiso de la semana que viene"
-              />
-              <button className="cu-btn-oro" type="submit" disabled={ocupado || !texto.trim()}>{editando ? "Guardar cambio" : "Guardar"}</button>
-              {editando && <button className="inf-btn" type="button" onClick={() => { setEditando(null); setTexto(""); }}>Cancelar</button>}
-            </form>
-          )}
+          <form className="cu-form" onSubmit={enviar}>
+            <input
+              className="cu-input"
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              placeholder={editando ? "" : proximos.length ? "Añade otro compromiso" : "Ej. Solo opero dos cuentas por sesión"}
+              maxLength={200}
+              aria-label={editando ? "Corregir el compromiso" : "Nuevo compromiso para la semana que viene"}
+            />
+            <button className="cu-btn-oro" type="submit" disabled={ocupado || !texto.trim()}>{editando ? "Guardar cambio" : proximos.length ? <><Plus size={13} style={{ verticalAlign: "-2px" }} /> Añadir</> : "Guardar"}</button>
+            {editando && <button className="inf-btn" type="button" onClick={() => { setEditando(null); setTexto(""); }}>Cancelar</button>}
+          </form>
           <div className="cu-pie">
-            {proximos.length === 0 ? "Una sola regla, concreta. En el informe de esa semana te preguntaré si la has cumplido." : <><CalendarClock size={11} style={{ verticalAlign: "-1px", marginRight: 5 }} />En el informe de esa semana te preguntaré si la has cumplido.</>}
+            {proximos.length === 0 ? "Compromisos concretos, uno por línea. En el informe de esa semana te preguntaré si los has cumplido." : <><CalendarClock size={11} style={{ verticalAlign: "-1px", marginRight: 5 }} />{proximos.length === 1 ? "En el informe de esa semana te preguntaré si lo has cumplido." : `${proximos.length} compromisos. En el informe de esa semana te preguntaré por cada uno.`}</>}
           </div>
         </div>
       </div>
@@ -493,21 +531,37 @@ export function Compromiso({ compromisos, proximos, etiqueta, etiquetaProxima, o
 }
 
 // ------------------------------------------------------------------ Mis reglas (ajustes)
-// reglas: las efectivas. editable: false si falta la columna configuracion.reglas_informe (entonces
-// solo se puede cambiar el riesgo, que ya tiene columnas propias). onGuardar(valores) → true si fue bien.
-export function MisReglasModal({ reglas, editable, onGuardar, onCerrar }) {
+// Reglas de UNA semana: lo que se guarda vale desde esa semana en adelante (hasta la siguiente
+// semana que tenga otras reglas guardadas); las semanas anteriores no cambian.
+// ajustes: reglasDeSemana(). editable: false si falta la columna configuracion.reglas_informe
+// (entonces solo se puede cambiar el riesgo). onGuardar({ valores, fijas, propias }) y onQuitar()
+// → true si fue bien. puedeQuitar: esta semana tiene reglas propias guardadas.
+const nuevoId = () => `p_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+export function MisReglasModal({ ajustes, etiquetaSemana, etiquetaHasta, editable, puedeQuitar, onGuardar, onQuitar, onCerrar }) {
   const aTexto = (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, String(v)]));
-  const [f, setF] = useState(() => aTexto(reglas));
+  const [f, setF] = useState(() => aTexto(ajustes.valores));
+  const [fijas, setFijas] = useState(() => JSON.parse(JSON.stringify(ajustes.fijas)));
+  const [propias, setPropias] = useState(() => ajustes.propias.map((p) => ({ ...p })));
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(false);
   const cambiar = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
-  const valido = reglasValidas(f);
+  const cambiarFija = (id, campo, valor) => setFijas((prev) => ({ ...prev, [id]: { ...prev[id], [campo]: valor } }));
+  const cambiarPropia = (id, campo, valor) => setPropias((prev) => prev.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)));
+  const valido = ajustesValidos({ valores: f, fijas, propias });
 
-  async function guardar() {
-    if (!valido || ocupado) return;
+  async function ejecutar(accion) {
+    if (ocupado) return;
     setOcupado(true);
     setError(false);
-    const ok = await onGuardar({
+    const ok = await accion();
+    setOcupado(false);
+    if (!ok) setError(true);
+  }
+
+  function guardar() {
+    if (!valido) return;
+    const valores = {
       diasTrasRetiro: Number(f.diasTrasRetiro),
       diasTrasQuemarFunded: Number(f.diasTrasQuemarFunded),
       riesgoPct: Number(f.riesgoPct),
@@ -519,50 +573,70 @@ export function MisReglasModal({ reglas, editable, onGuardar, onCerrar }) {
       nuevaYorkDesde: f.nuevaYorkDesde,
       nuevaYorkHasta: f.nuevaYorkHasta,
       corteSesiones: f.corteSesiones,
-    });
-    setOcupado(false);
-    if (!ok) setError(true);
+    };
+    const limpias = propias.map((p) => ({ ...p, titulo: p.titulo.trim(), norma: (p.norma || "").trim() }));
+    ejecutar(() => onGuardar({ valores, fijas, propias: limpias }));
+  }
+
+  function quitar() {
+    if (!window.confirm(`¿Quitar las reglas guardadas para la semana del ${etiquetaSemana}? Esta semana volverá a usar las de las semanas anteriores.`)) return;
+    ejecutar(onQuitar);
   }
 
   // Restablece los valores por defecto; si no se pueden guardar, conserva los que no son editables.
   function restablecer() {
     setF((prev) => (editable ? aTexto(REGLAS_POR_DEFECTO) : { ...prev, riesgoPct: String(REGLAS_POR_DEFECTO.riesgoPct), riesgoMinimo: String(REGLAS_POR_DEFECTO.riesgoMinimo) }));
+    if (editable) setFijas(Object.fromEntries(REGLAS_FIJAS.map(({ id, titulo }) => [id, { activa: true, titulo }])));
   }
 
   const num = (k, extra = {}) => <input type="number" inputMode="numeric" value={f[k]} onChange={cambiar(k)} disabled={!editable} {...extra} />;
   const hora = (k) => <input type="time" value={f[k]} onChange={cambiar(k)} disabled={!editable} />;
+  const cabecera = (id) => (
+    <div className="cu-grupo-cab">
+      <span className="cu-grupo-id">{id}</span>
+      <input className="cu-input" value={fijas[id].titulo} onChange={(e) => cambiarFija(id, "titulo", e.target.value)} maxLength={120} disabled={!editable} aria-label={`Nombre de la regla ${id}`} />
+      <label className="cu-interruptor">
+        <input type="checkbox" checked={fijas[id].activa} onChange={(e) => cambiarFija(id, "activa", e.target.checked)} disabled={!editable} />
+        Activa
+      </label>
+    </div>
+  );
+  const clase = (id) => `cu-grupo ${fijas[id].activa ? "" : "apagada"}`;
 
   return (
     <div className="cu-modal-fondo" onClick={onCerrar}>
       <div className="cu-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Mis reglas">
         <div className="cu-modal-cab">
-          <div className="inf-display" style={{ fontSize: 17, fontWeight: 600 }}>Mis reglas</div>
+          <div className="inf-display" style={{ fontSize: 17, fontWeight: 600 }}>Reglas de la semana del {etiquetaSemana}</div>
           <button className="cu-icono-btn" onClick={onCerrar} aria-label="Cerrar"><X size={16} /></button>
         </div>
-        <div className="cu-modal-intro">El informe comprueba estas cuatro reglas cada semana y te dice qué compra o qué operación rompió cada una. Ajústalas a tu forma de operar.</div>
+        <div className="cu-modal-intro">
+          Lo que guardes vale desde esta semana {etiquetaHasta ? `hasta la del ${etiquetaHasta}, que ya tiene otras reglas guardadas` : "en adelante"}. Las semanas anteriores siguen con sus reglas.
+          {" "}R1–R4 las comprueba el informe con tus datos; las que añadas tú las marcas cada semana.
+        </div>
 
         {!editable && (
-          <div className="cu-aviso">Por ahora solo se puede cambiar el riesgo por trade. Los días de espera y las sesiones usan los valores que ves; se podrán ajustar en cuanto se active en la base de datos.</div>
+          <div className="cu-aviso">Por ahora solo se puede cambiar el riesgo por trade. El resto se podrá ajustar en cuanto se active en la base de datos.</div>
         )}
 
-        <div className="cu-grupo">
-          <div className="cu-grupo-titulo"><span>R1</span>Compras tras un retiro</div>
+        <div className={clase("R1")}>
+          {cabecera("R1")}
           <div className="cu-fila">No comprar el día del retiro ni en los {num("diasTrasRetiro", { min: 0, max: 60, step: 1 })} días siguientes</div>
         </div>
-        <div className="cu-grupo">
-          <div className="cu-grupo-titulo"><span>R2</span>Compras tras quemar una funded</div>
+        <div className={clase("R2")}>
+          {cabecera("R2")}
           <div className="cu-fila">No comprar el mismo día ni en los {num("diasTrasQuemarFunded", { min: 0, max: 60, step: 1 })} días siguientes</div>
         </div>
-        <div className="cu-grupo">
-          <div className="cu-grupo-titulo"><span>R3</span>Riesgo por trade en funded</div>
+        <div className={clase("R3")}>
+          {cabecera("R3")}
           <div className="cu-fila">
             Como mucho el <input type="number" inputMode="decimal" min="1" max="100" step="1" value={f.riesgoPct} onChange={cambiar("riesgoPct")} /> % del margen, con un mínimo de{" "}
             <input type="number" inputMode="decimal" min="0" step="10" value={f.riesgoMinimo} onChange={cambiar("riesgoMinimo")} /> $
           </div>
-          <div className="cu-pie" style={{ marginTop: 0, marginBottom: 10 }}>Es el mismo ajuste de riesgo que usa Cuentas activas: si lo cambias aquí, cambia allí.</div>
+          <div className="cu-pie" style={{ marginTop: 0, marginBottom: 10 }}>Es también el riesgo de Cuentas activas: si estas son las reglas de hoy, cambia allí.</div>
         </div>
-        <div className="cu-grupo">
-          <div className="cu-grupo-titulo"><span>R4</span>Cuentas por sesión</div>
+        <div className={clase("R4")}>
+          {cabecera("R4")}
           <div className="cu-fila"><b>Londres</b> máximo {num("maxCuentasLondres", { min: 1, max: 50, step: 1 })} cuentas</div>
           <div className="cu-fila cu-fila-sub">Horario: de {hora("londresDesde")} a {hora("londresHasta")}</div>
           <div className="cu-fila"><b>Nueva York</b> máximo {num("maxCuentasNuevaYork", { min: 1, max: 50, step: 1 })} cuentas</div>
@@ -571,9 +645,31 @@ export function MisReglasModal({ reglas, editable, onGuardar, onCerrar }) {
           <div className="cu-pie" style={{ marginTop: 0, marginBottom: 10 }}>Las horas son las de la hora de entrada que apuntas en el Journal.</div>
         </div>
 
+        {editable && (
+          <div className="cu-grupo">
+            <div className="cu-grupo-titulo">Mis reglas propias</div>
+            {propias.length === 0 && <div className="cu-pie" style={{ marginTop: 0, marginBottom: 10 }}>Cualquier regla que quieras vigilar: el informe te preguntará cada semana si la has cumplido.</div>}
+            {propias.map((p, i) => (
+              <div key={p.id} className="cu-grupo-cab" style={{ alignItems: "flex-start" }}>
+                <span className="cu-grupo-id" style={{ marginTop: 10 }}>R{REGLAS_FIJAS.length + i + 1}</span>
+                <div className="cu-propia-edit">
+                  <input className="cu-input" value={p.titulo} onChange={(e) => cambiarPropia(p.id, "titulo", e.target.value)} placeholder="Ej. No operar en noticias" maxLength={120} aria-label="Nombre de la regla" />
+                  <textarea className="cu-input" value={p.norma || ""} onChange={(e) => cambiarPropia(p.id, "norma", e.target.value)} placeholder="Detalle (opcional)" maxLength={300} rows={1} aria-label="Detalle de la regla" />
+                </div>
+                <button className="cu-icono-btn" style={{ marginTop: 6 }} type="button" onClick={() => setPropias((prev) => prev.filter((x) => x.id !== p.id))} title="Quitar regla" aria-label="Quitar regla"><Trash2 size={13} /></button>
+              </div>
+            ))}
+            <button className="cu-btn-linea" type="button" onClick={() => setPropias((prev) => [...prev, { id: nuevoId(), titulo: "", norma: "" }])}><Plus size={14} /> Añadir una regla</button>
+          </div>
+        )}
+
         {error && <div className="cu-error">No se han podido guardar los cambios. Revisa tu conexión y vuelve a intentarlo.</div>}
+        {!valido && <div className="cu-error">Revisa los valores: cada regla necesita un nombre y los números y horarios tienen que ser válidos.</div>}
         <div className="cu-modal-acciones">
-          <button className="inf-btn" type="button" onClick={restablecer}>Valores por defecto</button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="inf-btn" type="button" onClick={restablecer}>Valores por defecto</button>
+            {puedeQuitar && editable && <button className="inf-btn" type="button" onClick={quitar} disabled={ocupado}>Quitar los cambios de esta semana</button>}
+          </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button className="inf-btn" type="button" onClick={onCerrar}>Cancelar</button>
             <button className="cu-btn-oro" type="button" onClick={guardar} disabled={!valido || ocupado}>{ocupado ? "Guardando…" : "Guardar"}</button>
