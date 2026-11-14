@@ -12,15 +12,19 @@ import {
   ReferenceLine,
   Cell,
 } from "recharts";
-import { ChevronLeft, ChevronRight, CalendarRange, CalendarDays, Layers, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarRange, CalendarDays, Layers, Clock, Download } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import { enmascarar } from "./utils/importes";
+import { construirInforme, normalizarReglas, compromisosDeSemana, exportarParaVideo, sumarDias, fechaCorta, CLAVES_JSON } from "./utils/informeCuento";
+import { ESTILOS_CUENTO, Portada, Capitulos, Marcador, Semaforo, Moraleja, Compromiso, MisReglasModal } from "./InformeCuento";
 
 // Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
 function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
 
 const TRADES_TABLE = "trades";
 const ESTRATEGIA_REGISTROS_TABLE = "estrategia_registros";
+const OBJETIVOS_TABLE = "objetivos";
+const CONFIG_TABLE = "configuracion";
 
 function fmtMoneyBase(n) {
   const v = Number(n) || 0;
@@ -52,12 +56,27 @@ function addDays(d, n) {
   return copy;
 }
 
-export default function Informes() {
+export default function Informes({ session }) {
   const [tab, setTab] = useState("semana"); // "semana" | "mes" | "estrategia"
   const [trades, setTrades] = useState([]);
   const [reglas, setReglas] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+
+  // Datos del informe «contado como un cuento». Van aparte de los trades: si alguna de estas
+  // consultas falla, el resto de Informes sigue funcionando y se avisa con discreción.
+  const [cuentas, setCuentas] = useState([]);
+  const [retiros, setRetiros] = useState([]);
+  const [compras, setCompras] = useState([]);
+  const [diario, setDiario] = useState([]);
+  const [objetivos, setObjetivos] = useState([]);
+  const [configFila, setConfigFila] = useState(null); // riesgo_pct_funded, riesgo_minimo
+  const [reglasGuardadas, setReglasGuardadas] = useState(null); // configuracion.reglas_informe (jsonb)
+  const [reglasEditables, setReglasEditables] = useState(false); // false si falta esa columna
+  const [extrasIncompletos, setExtrasIncompletos] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [verReglas, setVerReglas] = useState(false);
 
   const [weekAnchor, setWeekAnchor] = useState(() => new Date());
   const [monthAnchor, setMonthAnchor] = useState(() => new Date());
@@ -79,9 +98,47 @@ export default function Informes() {
     setLoaded(true);
   }, []);
 
+  const cargarObjetivos = useCallback(async () => {
+    const { data, error: err } = await conReintento(() => supabase.from(OBJETIVOS_TABLE).select("*"));
+    if (err) console.error(err);
+    else setObjetivos(data || []);
+    return !err;
+  }, []);
+
+  const cargarConfig = useCallback(async () => {
+    // Dos consultas: la segunda falla si aún no existe la columna reglas_informe
+    // (sql/configuracion_reglas_informe.sql) y entonces se usan los valores por defecto.
+    const [riesgo, json] = await Promise.all([
+      supabase.from(CONFIG_TABLE).select("riesgo_pct_funded, riesgo_minimo").maybeSingle(),
+      supabase.from(CONFIG_TABLE).select("reglas_informe").maybeSingle(),
+    ]);
+    if (riesgo.error) console.error(riesgo.error);
+    else setConfigFila(riesgo.data || null);
+    setReglasEditables(!json.error);
+    setReglasGuardadas(json.error ? null : json.data?.reglas_informe || null);
+  }, []);
+
+  const cargarExtras = useCallback(async () => {
+    const [cu, re, co, di] = await Promise.all([
+      conReintento(() => supabase.from("cuentas").select("*")),
+      conReintento(() => supabase.from("retiros").select("*")),
+      conReintento(() => supabase.from("cuentas_compradas").select("fecha, proveedor, costo")),
+      supabase.from("diario_emocional").select("fecha, estado_animo, nota"),
+    ]);
+    if (cu.error || re.error || co.error) console.error(cu.error || re.error || co.error);
+    setCuentas(cu.data || []);
+    setRetiros(re.data || []);
+    setCompras(co.data || []);
+    setDiario(di.error ? [] : di.data || []); // el diario es un extra: si falla, los capítulos salen sin él
+    const okObjetivos = await cargarObjetivos();
+    await cargarConfig();
+    setExtrasIncompletos(!!(cu.error || re.error || co.error) || !okObjetivos);
+  }, [cargarObjetivos, cargarConfig]);
+
+  // Primero los trades (con reintento, por si el token aún se está refrescando) y después el resto.
   useEffect(() => {
-    cargar();
-  }, [cargar]);
+    cargar().then(cargarExtras);
+  }, [cargar, cargarExtras]);
 
   // --- Rango de semana ---
   const weekStart = useMemo(() => mondayOf(weekAnchor), [weekAnchor]);
@@ -107,6 +164,78 @@ export default function Informes() {
     });
   }, [weekStart, weekTrades]);
 
+  // --- Informe «contado como un cuento» de la semana ---
+  const misReglas = useMemo(() => normalizarReglas(reglasGuardadas, configFila), [reglasGuardadas, configFila]);
+  const informeSemana = useMemo(
+    () => construirInforme({ desde: weekStartIso, hasta: weekEndIso, periodo: "semana", trades, cuentas, retiros, compras, diario, reglas: misReglas }),
+    [weekStartIso, weekEndIso, trades, cuentas, retiros, compras, diario, misReglas]
+  );
+  const proximoLunes = sumarDias(weekStartIso, 7);
+  const proximoDomingo = sumarDias(weekStartIso, 13);
+  const compromisos = useMemo(() => compromisosDeSemana(objetivos, weekStartIso), [objetivos, weekStartIso]);
+  const proximos = useMemo(() => compromisosDeSemana(objetivos, proximoLunes), [objetivos, proximoLunes]);
+
+  // Los compromisos son objetivos semanales sin meta en $: los mismos tres estados que en Objetivos
+  // (pulsar el estado activo lo devuelve a «pendiente»).
+  async function mutarObjetivos(consulta) {
+    setOcupado(true);
+    setErrorGuardado(false);
+    const { error: err } = await consulta();
+    if (err) {
+      console.error(err);
+      setErrorGuardado(true);
+    } else {
+      await cargarObjetivos();
+    }
+    setOcupado(false);
+    return !err;
+  }
+  function cambiarEstadoCompromiso(o, nuevo) {
+    const valor = (o.estado || "pendiente") === nuevo ? "pendiente" : nuevo;
+    return mutarObjetivos(() => supabase.from(OBJETIVOS_TABLE).update({ estado: valor, completado: valor === "logrado" }).eq("id", o.id));
+  }
+  function guardarCompromiso(texto, existente) {
+    return mutarObjetivos(() =>
+      existente
+        ? supabase.from(OBJETIVOS_TABLE).update({ titulo: texto }).eq("id", existente.id)
+        : supabase.from(OBJETIVOS_TABLE).insert({ titulo: texto, tipo: "semanal", fecha_inicio: proximoLunes, fecha_fin: proximoDomingo, meta_valor: null, notas: null })
+    );
+  }
+  function borrarCompromiso(o) {
+    if (!window.confirm("¿Borrar este compromiso? También desaparece de Objetivos.")) return false;
+    return mutarObjetivos(() => supabase.from(OBJETIVOS_TABLE).delete().eq("id", o.id));
+  }
+
+  // «Mis reglas»: el riesgo va a sus columnas de siempre (las de Cuentas activas) y el resto al
+  // jsonb reglas_informe, si la columna existe. El upsert solo toca estas columnas.
+  async function guardarReglas(valores) {
+    if (!session?.user?.id) return false;
+    const fila = { user_id: session.user.id, riesgo_pct_funded: valores.riesgoPct, riesgo_minimo: valores.riesgoMinimo };
+    if (reglasEditables) fila.reglas_informe = Object.fromEntries(CLAVES_JSON.map((k) => [k, valores[k]]));
+    const { error: err } = await supabase.from(CONFIG_TABLE).upsert(fila);
+    if (err) {
+      console.error(err);
+      return false;
+    }
+    await cargarConfig();
+    setVerReglas(false);
+    return true;
+  }
+
+  // Descarga el JSON de la semana con la forma de datos/semana_ddmm.json del vídeo semanal.
+  function exportarVideo() {
+    const datos = exportarParaVideo(informeSemana, { proximo: proximos[0]?.titulo || "" });
+    const blob = new Blob([JSON.stringify(datos, null, 2) + "\n"], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${datos.video_id}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   // --- Rango de mes ---
   const monthYear = monthAnchor.getFullYear();
   const monthIdx = monthAnchor.getMonth();
@@ -121,6 +250,10 @@ export default function Informes() {
   const monthReglas = useMemo(
     () => resumenReglas(reglas.filter((r) => r.fecha >= monthStartIso && r.fecha <= monthEndIso)),
     [reglas, monthStartIso, monthEndIso]
+  );
+  const informeMes = useMemo(
+    () => construirInforme({ desde: monthStartIso, hasta: monthEndIso, periodo: "mes", trades, cuentas, retiros, compras, diario, reglas: misReglas }),
+    [monthStartIso, monthEndIso, trades, cuentas, retiros, compras, diario, misReglas]
   );
   const monthPorSemana = useMemo(() => {
     const map = {};
@@ -246,6 +379,9 @@ export default function Informes() {
         .inf-loss { color: var(--loss); }
 
         .inf-error-banner { background: var(--loss-dim); color: #FBD8D2; font-size: 12.5px; padding: 8px 14px; border-radius: 8px; margin-bottom: 14px; }
+        .inf-range-extra { margin-left: auto; }
+        .inf-detalle-titulo { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 30px 0 12px; }
+        ${ESTILOS_CUENTO}
 
         @media (max-width: 640px) {
           .inf-header { padding: 18px 14px 6px; }
@@ -256,6 +392,7 @@ export default function Informes() {
           .inf-panel { padding: 14px; }
           .inf-range-nav { flex-wrap: wrap; gap: 8px; }
           .inf-range-label { min-width: 0; flex: 1 1 auto; font-size: 12.5px; }
+          .inf-range-extra { margin-left: 0; }
           .inf-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
           .inf-stat-card { padding: 12px; }
           .inf-stat-value { font-size: 17px; }
@@ -264,12 +401,16 @@ export default function Informes() {
 
       <div className="inf-header">
         <div className="inf-title inf-display">Informes</div>
-        <div className="inf-subtitle inf-mono">Revisa tu progreso por semana, mes o estrategia</div>
+        <div className="inf-subtitle inf-mono">Tu semana y tu mes, contados como un cuento</div>
       </div>
 
       <div className="inf-main">
         {error && <div className="inf-error-banner">Hubo un problema cargando los datos. Revisa tu conexión o los permisos en Supabase.</div>}
         {!loaded && <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 16 }}>Cargando…</div>}
+        {extrasIncompletos && (tab === "semana" || tab === "mes") && (
+          <div className="cu-aviso">No se han podido cargar las cuentas, los retiros, las compras o los objetivos: el marcador, las reglas y el compromiso pueden estar incompletos. Recarga la página para volver a intentarlo.</div>
+        )}
+        {errorGuardado && <div className="inf-error-banner">No se ha podido guardar el cambio. Revisa tu conexión y vuelve a intentarlo.</div>}
 
         <div className="inf-tabs">
           <button className={`inf-tab ${tab === "semana" ? "active" : ""}`} onClick={() => setTab("semana")}>
@@ -295,8 +436,28 @@ export default function Informes() {
               </div>
               <button className="inf-icon-btn" onClick={() => setWeekAnchor((d) => addDays(d, 7))}><ChevronRight size={16} /></button>
               <button className="inf-btn" onClick={() => setWeekAnchor(new Date())}>Esta semana</button>
+              <button className="inf-btn inf-range-extra" onClick={exportarVideo} title="Descarga el JSON de esta semana para el vídeo semanal">
+                <Download size={13} /> Exportar para el vídeo
+              </button>
             </div>
 
+            <Portada informe={informeSemana} etiqueta={`${fechaCorta(weekStartIso)} – ${fechaCorta(weekEndIso)}`} />
+            <Capitulos informe={informeSemana} />
+            <Marcador informe={informeSemana} />
+            <Semaforo informe={informeSemana} onMisReglas={() => setVerReglas(true)} />
+            <Moraleja informe={informeSemana} />
+            <Compromiso
+              compromisos={compromisos}
+              proximos={proximos}
+              etiqueta={`${fechaCorta(weekStartIso)} al ${fechaCorta(weekEndIso)}`}
+              etiquetaProxima={`${fechaCorta(proximoLunes)} – ${fechaCorta(proximoDomingo)}`}
+              ocupado={ocupado}
+              onEstado={cambiarEstadoCompromiso}
+              onGuardar={guardarCompromiso}
+              onBorrar={borrarCompromiso}
+            />
+
+            <div className="inf-detalle-titulo">Los números</div>
             <ResumenGrid resumen={weekResumen} reglas={weekReglas} />
 
             <div className="inf-panel">
@@ -334,6 +495,12 @@ export default function Informes() {
               <button className="inf-btn" onClick={() => setMonthAnchor(new Date())}>Este mes</button>
             </div>
 
+            <Portada informe={informeMes} etiqueta={monthAnchor.toLocaleDateString("es-ES", { month: "long", year: "numeric" })} />
+            <Marcador informe={informeMes} />
+            <Semaforo informe={informeMes} onMisReglas={() => setVerReglas(true)} />
+            <Moraleja informe={informeMes} />
+
+            <div className="inf-detalle-titulo">Los números</div>
             <ResumenGrid resumen={monthResumen} reglas={monthReglas} />
 
             <div className="inf-stats-grid">
@@ -451,6 +618,8 @@ export default function Informes() {
           </>
         )}
       </div>
+
+      {verReglas && <MisReglasModal reglas={misReglas} editable={reglasEditables} onGuardar={guardarReglas} onCerrar={() => setVerReglas(false)} />}
     </div>
   );
 }
@@ -502,7 +671,7 @@ function ResumenGrid({ resumen, reglas }) {
         <div className="inf-stat-sub">{resumen.mejorDia ? fmtDateShort(resumen.mejorDia[0]) : ""}</div>
       </div>
       <div className="inf-stat-card">
-        <div className="inf-stat-label">Cumplimiento de reglas</div>
+        <div className="inf-stat-label">Checklist de estrategia</div>
         <div className="inf-stat-value inf-mono">{reglas.pct !== null ? `${reglas.pct}%` : "\u2014"}</div>
         <div className="inf-stat-sub">{reglas.total ? `${reglas.cumplidos} de ${reglas.total} registros` : "Sin registros de Estrategia"}</div>
       </div>
