@@ -4,6 +4,8 @@
 import {
   construirInforme, evaluarReglas, normalizarReglas, reglasValidas, compromisosDeSemana, exportarParaVideo,
   textoPlano, sumarDias, diasEntre, lunesDe, fechaConDia, minutosDeHora, REGLAS_POR_DEFECTO,
+  leerPlanReglas, serializarPlanReglas, versionDeSemana, reglasDeSemana, guardarVersion, quitarVersion,
+  marcarReglaPropia, reglasPropiasDelPeriodo, reglasCambianEnPeriodo, ajustesValidos,
 } from "../src/utils/informeCuento.js";
 
 let fallos = 0;
@@ -127,6 +129,49 @@ igual([json.dias.length, json.dias[0], json.dias.reduce((s, d) => s + d.resultad
 igual([json.marcador.quemadas, json.marcador.quemadas_detalle, json.marcador.pasadas, json.marcador.compras, json.marcador.compras_ok, json.proximo], [3, "2 evaluaciones y 1 funded", 1, 4, "", "Solo dos cuentas por sesión"], "JSON: marcador y próximo");
 igual([json.moraleja.items, json.moraleja.suma, json.moraleja.comparacion], [[["Martes", -2000], ["Martes", -2000], ["Viernes", -1000]], -5000, "2,9 veces lo que perdí en la semana"], "JSON: moraleja en primera persona");
 igual(exportarParaVideo(construirInforme({ desde: "2026-11-30", hasta: "2026-12-06" })).etiqueta, "Semana 30 nov–4 dic", "JSON: etiqueta entre dos meses");
+
+// ---------------------------------------------------------------- Reglas por semana
+const cfg = { riesgo_pct_funded: 30, riesgo_minimo: 200 };
+const hoy = "2026-11-16"; // lunes de «esta semana» en las pruebas
+const vacioPlan = leerPlanReglas(null);
+igual([vacioPlan.versiones.length, reglasDeSemana(vacioPlan, "2026-11-09", { config: cfg, lunesHoy: hoy }).valores.riesgoPct], [0, 30], "sin plan: valores por defecto y riesgo de las columnas");
+const antiguo = leerPlanReglas({ diasTrasRetiro: 7 });
+igual([antiguo.versiones.length, reglasDeSemana(antiguo, "2020-01-06").valores.diasTrasRetiro, reglasDeSemana(antiguo, "2020-01-06").desde], [1, 7, null], "formato antiguo: una versión desde siempre");
+
+const valores = { ...REGLAS_POR_DEFECTO, riesgoPct: 30, riesgoMinimo: 200 };
+let plan = guardarVersion(antiguo, "2026-11-09", {
+  valores: { ...valores, diasTrasRetiro: 3, riesgoPct: 20 },
+  fijas: { R2: { activa: false, titulo: "Compras tras quemar una funded" }, R4: { activa: true, titulo: "Máximo de cuentas" } },
+  propias: [{ id: "p1", titulo: "No operar noticias", norma: "Fuera 5 min antes y después" }, { id: "", titulo: "sin id" }],
+}, { config: cfg, lunesHoy: hoy });
+const s9 = reglasDeSemana(plan, "2026-11-09", { config: cfg, lunesHoy: hoy });
+const s2 = reglasDeSemana(plan, "2026-11-02", { config: cfg, lunesHoy: hoy });
+igual([s9.desde, s9.valores.diasTrasRetiro, s9.fijas.R2.activa, s9.fijas.R4.titulo, s9.fijas.R1.titulo, s9.propias.map((p) => p.id)], ["2026-11-09", 3, false, "Máximo de cuentas", "Compras tras un retiro", ["p1"]], "la versión nueva vale desde su semana");
+igual([s2.valores.diasTrasRetiro, s2.fijas.R2.activa, s2.propias.length, s2.hastaAntesDe], [7, true, 0, "2026-11-09"], "las semanas anteriores siguen con sus reglas");
+igual(reglasDeSemana(plan, "2026-11-30", { config: cfg, lunesHoy: hoy }).valores.diasTrasRetiro, 3, "y las siguientes heredan la última");
+igual([s9.valores.riesgoPct, s2.valores.riesgoPct], [30, 30], "la vigente hoy usa el riesgo de las columnas; la antigua quedó congelada con él");
+const releido = leerPlanReglas(JSON.parse(JSON.stringify(serializarPlanReglas(plan))));
+igual(releido.versiones.map((v) => v.desde), ["0000-01-01", "2026-11-09"], "guardar y volver a leer");
+igual(versionDeSemana(plan, "2026-11-15").desde, "2026-11-09", "versionDeSemana con un día que no es lunes");
+
+plan = guardarVersion(plan, "2026-11-23", { valores, fijas: {}, propias: [{ id: "p1", titulo: "No operar noticias" }, { id: "p2", titulo: "Diario cada día" }] }, { config: cfg, lunesHoy: hoy });
+igual(reglasDeSemana(plan, "2026-11-16").hastaAntesDe, "2026-11-23", "una versión futura corta la anterior");
+igual(quitarVersion(plan, "2026-11-23").versiones.map((v) => v.desde), ["0000-01-01", "2026-11-09"], "quitar los cambios de una semana");
+
+plan = marcarReglaPropia(plan, "2026-11-09", "p1", "ok");
+plan = marcarReglaPropia(plan, "2026-11-16", "p1", "rota");
+igual(reglasPropiasDelPeriodo(plan, "2026-11-09", "2026-11-15").map((p) => [p.id, p.estado]), [["p1", "ok"]], "regla propia marcada en la semana");
+igual(reglasPropiasDelPeriodo(plan, "2026-11-23", "2026-11-29").map((p) => [p.id, p.estado]), [["p1", "pendiente"], ["p2", "pendiente"]], "sin marcar: pendiente");
+const mesP = reglasPropiasDelPeriodo(plan, "2026-11-01", "2026-11-30", "mes");
+igual(mesP.map((p) => [p.id, p.estado, p.resumen]), [["p1", "rota", "Cumplida 1 de 2 semanas marcadas."], ["p2", "pendiente", "Sin marcar ninguna semana de este mes."]], "en el mes se juntan las semanas");
+igual(marcarReglaPropia(plan, "2026-11-09", "p1", null).marcas["2026-11-09"], undefined, "desmarcar");
+igual([reglasCambianEnPeriodo(plan, "2026-11-01", "2026-11-30"), reglasCambianEnPeriodo(plan, "2026-12-01", "2026-12-31")], [true, false], "¿cambian las reglas en el mes?");
+
+const conAjustes = construirInforme({ ...base, fijas: s9.fijas, propias: reglasPropiasDelPeriodo(plan, "2026-11-09", "2026-11-15") });
+igual(conAjustes.reglas.map((r) => [r.id, r.titulo, r.estado]), [["R1", "Compras tras un retiro", "rota"], ["R3", "Riesgo por trade en funded", "rota"], ["R4", "Máximo de cuentas", "rota"], ["R5", "No operar noticias", "ok"]], "informe: R2 apagada, R4 renombrada y la propia al final");
+igual(exportarParaVideo(construirInforme({ ...base, propias: [{ id: "x", titulo: "X" }] })).reglas.map((r) => r.cumplida).slice(-1), [null], "JSON: regla propia sin marcar");
+const formOk = { valores: form, fijas: s9.fijas, propias: [{ id: "a", titulo: "Algo" }] };
+igual([ajustesValidos(formOk), ajustesValidos({ ...formOk, propias: [{ id: "a", titulo: "  " }] }), ajustesValidos({ ...formOk, fijas: { R1: { activa: true, titulo: "" } } })], [true, false, false], "validación de títulos");
 
 console.log(fallos ? `\n${fallos} de ${pruebas} pruebas han fallado.` : `✓ ${pruebas} pruebas correctas.`);
 process.exit(fallos ? 1 : 0);

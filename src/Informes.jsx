@@ -15,7 +15,12 @@ import {
 import { ChevronLeft, ChevronRight, CalendarRange, CalendarDays, Layers, Clock, Download } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import { enmascarar } from "./utils/importes";
-import { construirInforme, normalizarReglas, compromisosDeSemana, exportarParaVideo, sumarDias, fechaCorta, CLAVES_JSON } from "./utils/informeCuento";
+import { hoyIso } from "./utils/periodo";
+import {
+  construirInforme, compromisosDeSemana, exportarParaVideo, sumarDias, fechaCorta, lunesDe,
+  leerPlanReglas, serializarPlanReglas, reglasDeSemana, versionDeSemana, guardarVersion, quitarVersion,
+  marcarReglaPropia, reglasPropiasDelPeriodo, reglasCambianEnPeriodo,
+} from "./utils/informeCuento";
 import { ESTILOS_CUENTO, Portada, Capitulos, Marcador, Semaforo, Moraleja, Compromiso, MisReglasModal } from "./InformeCuento";
 
 // Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
@@ -165,10 +170,19 @@ export default function Informes({ session }) {
   }, [weekStart, weekTrades]);
 
   // --- Informe «contado como un cuento» de la semana ---
-  const misReglas = useMemo(() => normalizarReglas(reglasGuardadas, configFila), [reglasGuardadas, configFila]);
+  // Cada semana tiene sus reglas (ver «Reglas por semana» en utils/informeCuento.js).
+  const planReglas = useMemo(() => leerPlanReglas(reglasGuardadas), [reglasGuardadas]);
+  const lunesHoy = lunesDe(hoyIso());
+  const reglasSemana = useMemo(
+    () => reglasDeSemana(planReglas, weekStartIso, { config: configFila, lunesHoy }),
+    [planReglas, weekStartIso, configFila, lunesHoy]
+  );
   const informeSemana = useMemo(
-    () => construirInforme({ desde: weekStartIso, hasta: weekEndIso, periodo: "semana", trades, cuentas, retiros, compras, diario, reglas: misReglas }),
-    [weekStartIso, weekEndIso, trades, cuentas, retiros, compras, diario, misReglas]
+    () => construirInforme({
+      desde: weekStartIso, hasta: weekEndIso, periodo: "semana", trades, cuentas, retiros, compras, diario,
+      reglas: reglasSemana.valores, fijas: reglasSemana.fijas, propias: reglasPropiasDelPeriodo(planReglas, weekStartIso, weekEndIso),
+    }),
+    [weekStartIso, weekEndIso, trades, cuentas, retiros, compras, diario, reglasSemana, planReglas]
   );
   const proximoLunes = sumarDias(weekStartIso, 7);
   const proximoDomingo = sumarDias(weekStartIso, 13);
@@ -206,25 +220,65 @@ export default function Informes({ session }) {
     return mutarObjetivos(() => supabase.from(OBJETIVOS_TABLE).delete().eq("id", o.id));
   }
 
-  // «Mis reglas»: el riesgo va a sus columnas de siempre (las de Cuentas activas) y el resto al
-  // jsonb reglas_informe, si la columna existe. El upsert solo toca estas columnas.
-  async function guardarReglas(valores) {
+  // «Mis reglas»: el plan entero va al jsonb reglas_informe; el riesgo, además, a sus columnas de
+  // siempre (las de Cuentas activas) cuando son las reglas vigentes hoy. El upsert solo toca estas
+  // columnas. Sin la columna reglas_informe solo se guarda el riesgo.
+  async function guardarPlan(nuevoPlan, riesgo) {
     if (!session?.user?.id) return false;
-    const fila = { user_id: session.user.id, riesgo_pct_funded: valores.riesgoPct, riesgo_minimo: valores.riesgoMinimo };
-    if (reglasEditables) fila.reglas_informe = Object.fromEntries(CLAVES_JSON.map((k) => [k, valores[k]]));
+    const fila = { user_id: session.user.id };
+    if (reglasEditables) fila.reglas_informe = serializarPlanReglas(nuevoPlan);
+    if (riesgo) {
+      fila.riesgo_pct_funded = riesgo.riesgoPct;
+      fila.riesgo_minimo = riesgo.riesgoMinimo;
+    }
+    if (Object.keys(fila).length === 1) return true;
     const { error: err } = await supabase.from(CONFIG_TABLE).upsert(fila);
     if (err) {
       console.error(err);
       return false;
     }
     await cargarConfig();
-    setVerReglas(false);
     return true;
+  }
+  // El riesgo de la versión vigente hoy, para copiarlo a las columnas (null si no cambia la de hoy).
+  function riesgoDeHoy(nuevoPlan, valoresGuardados) {
+    return versionDeSemana(nuevoPlan, lunesHoy)?.desde === weekStartIso ? valoresGuardados : null;
+  }
+  async function guardarReglas(datos) {
+    if (!reglasEditables) {
+      const ok = await guardarPlan(planReglas, { riesgoPct: datos.valores.riesgoPct, riesgoMinimo: datos.valores.riesgoMinimo });
+      if (ok) setVerReglas(false);
+      return ok;
+    }
+    const nuevo = guardarVersion(planReglas, weekStartIso, datos, { config: configFila, lunesHoy });
+    const ok = await guardarPlan(nuevo, riesgoDeHoy(nuevo, datos.valores));
+    if (ok) setVerReglas(false);
+    return ok;
+  }
+  async function quitarReglasSemana() {
+    const nuevo = quitarVersion(planReglas, weekStartIso, { config: configFila, lunesHoy });
+    // Si deja de mandar la de hoy, las columnas vuelven al riesgo que guardó la que manda ahora.
+    const antes = versionDeSemana(planReglas, lunesHoy);
+    const ahora = versionDeSemana(nuevo, lunesHoy);
+    const guardado = ahora?.valores || {};
+    const riesgo = antes !== ahora && antes?.desde === weekStartIso && guardado.riesgoPct != null && guardado.riesgoMinimo != null
+      ? { riesgoPct: guardado.riesgoPct, riesgoMinimo: guardado.riesgoMinimo }
+      : null;
+    const ok = await guardarPlan(nuevo, riesgo);
+    if (ok) setVerReglas(false);
+    return ok;
+  }
+  async function marcarRegla(regla, estado) {
+    setOcupado(true);
+    setErrorGuardado(false);
+    const ok = await guardarPlan(marcarReglaPropia(planReglas, weekStartIso, regla.clave, estado), null);
+    if (!ok) setErrorGuardado(true);
+    setOcupado(false);
   }
 
   // Descarga el JSON de la semana con la forma de datos/semana_ddmm.json del vídeo semanal.
   function exportarVideo() {
-    const datos = exportarParaVideo(informeSemana, { proximo: proximos[0]?.titulo || "" });
+    const datos = exportarParaVideo(informeSemana, { proximo: proximos.map((o) => o.titulo).join(" · ") });
     const blob = new Blob([JSON.stringify(datos, null, 2) + "\n"], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -251,10 +305,21 @@ export default function Informes({ session }) {
     () => resumenReglas(reglas.filter((r) => r.fecha >= monthStartIso && r.fecha <= monthEndIso)),
     [reglas, monthStartIso, monthEndIso]
   );
-  const informeMes = useMemo(
-    () => construirInforme({ desde: monthStartIso, hasta: monthEndIso, periodo: "mes", trades, cuentas, retiros, compras, diario, reglas: misReglas }),
-    [monthStartIso, monthEndIso, trades, cuentas, retiros, compras, diario, misReglas]
+  // El mes se juzga con las reglas vigentes en su última semana; las propias juntan las marcas de sus semanas.
+  const reglasMes = useMemo(
+    () => reglasDeSemana(planReglas, lunesDe(monthEndIso), { config: configFila, lunesHoy }),
+    [planReglas, monthEndIso, configFila, lunesHoy]
   );
+  const informeMes = useMemo(
+    () => construirInforme({
+      desde: monthStartIso, hasta: monthEndIso, periodo: "mes", trades, cuentas, retiros, compras, diario,
+      reglas: reglasMes.valores, fijas: reglasMes.fijas, propias: reglasPropiasDelPeriodo(planReglas, monthStartIso, monthEndIso, "mes"),
+    }),
+    [monthStartIso, monthEndIso, trades, cuentas, retiros, compras, diario, reglasMes, planReglas]
+  );
+  const notaCambioMes = reglasCambianEnPeriodo(planReglas, monthStartIso, monthEndIso)
+    ? "Cambiaste las reglas durante el mes: aquí se juzga todo el mes con las de su última semana. Cada semana, con las suyas, en la pestaña Semana."
+    : null;
   const monthPorSemana = useMemo(() => {
     const map = {};
     monthTrades.forEach((t) => {
@@ -444,7 +509,7 @@ export default function Informes({ session }) {
             <Portada informe={informeSemana} etiqueta={`${fechaCorta(weekStartIso)} – ${fechaCorta(weekEndIso)}`} />
             <Capitulos informe={informeSemana} />
             <Marcador informe={informeSemana} />
-            <Semaforo informe={informeSemana} onMisReglas={() => setVerReglas(true)} />
+            <Semaforo informe={informeSemana} onMisReglas={() => setVerReglas(true)} onMarcar={reglasEditables ? marcarRegla : null} ocupado={ocupado} />
             <Moraleja informe={informeSemana} />
             <Compromiso
               compromisos={compromisos}
@@ -497,7 +562,7 @@ export default function Informes({ session }) {
 
             <Portada informe={informeMes} etiqueta={monthAnchor.toLocaleDateString("es-ES", { month: "long", year: "numeric" })} />
             <Marcador informe={informeMes} />
-            <Semaforo informe={informeMes} onMisReglas={() => setVerReglas(true)} />
+            <Semaforo informe={informeMes} notaCambio={notaCambioMes} />
             <Moraleja informe={informeMes} />
 
             <div className="inf-detalle-titulo">Los números</div>
@@ -619,7 +684,19 @@ export default function Informes({ session }) {
         )}
       </div>
 
-      {verReglas && <MisReglasModal reglas={misReglas} editable={reglasEditables} onGuardar={guardarReglas} onCerrar={() => setVerReglas(false)} />}
+      {verReglas && (
+        <MisReglasModal
+          key={weekStartIso}
+          ajustes={reglasSemana}
+          etiquetaSemana={`${fechaCorta(weekStartIso)} al ${fechaCorta(weekEndIso)}`}
+          etiquetaHasta={reglasSemana.hastaAntesDe ? fechaCorta(reglasSemana.hastaAntesDe) : null}
+          editable={reglasEditables}
+          puedeQuitar={reglasSemana.desde === weekStartIso}
+          onGuardar={guardarReglas}
+          onQuitar={quitarReglasSemana}
+          onCerrar={() => setVerReglas(false)}
+        />
+      )}
     </div>
   );
 }
