@@ -71,3 +71,10 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 - Cambios de más de un archivo: rama nueva y PR en borrador, para probar en el deploy preview de Netlify antes de fusionar.
 - No añadir dependencias sin preguntar antes.
 - Los textos de la interfaz, en español de España.
+
+## Reglas de base de datos (mandan sobre cualquier skill)
+- Nunca ejecutes SQL (execute_sql, apply_migration, supabase db push ni similares) contra producción.
+- Contra el proyecto de pruebas, solo con mi permiso explícito en esa sesión.
+- Los cambios de esquema van siempre como archivo en sql/ con su rollback en sql/rollback/; los pego yo a mano, primero en pruebas y luego en producción.
+- Solo lectura permitida sin preguntar: get_advisors, list_tables, search_docs.
+- No uses la CLI de Supabase para migraciones en este proyecto.
