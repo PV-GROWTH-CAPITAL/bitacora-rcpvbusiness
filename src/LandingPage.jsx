@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { NotebookPen, ClipboardCheck, BarChart3, Target, Wallet, ArrowRight, Check, ShieldCheck, Lock, ChevronDown } from "lucide-react";
+import { NotebookPen, ClipboardCheck, BarChart3, Target, Wallet, HandCoins, ArrowRight, Check, ShieldCheck, Lock, ChevronDown } from "lucide-react";
+import LandingDemo from "./LandingDemo.jsx";
 
 // Pequeño hook para animaciones de aparición al hacer scroll.
 function useReveal() {
@@ -42,6 +43,7 @@ const TICKER_ITEMS = [
   "CHECKLIST DE ESTRATEGIA",
   "OBJETIVOS Y HÁBITOS",
   "CONTABILIDAD DE CUENTAS",
+  "MURO DE PAYOUTS",
   "INFORMES EN TIEMPO REAL",
 ];
 
@@ -70,6 +72,11 @@ const FEATURES = [
     icon: Wallet,
     title: "Contabilidad",
     desc: "Seguimiento de tus cuentas de fondeo y retiros, todo centralizado en un solo sitio.",
+  },
+  {
+    icon: HandCoins,
+    title: "Payouts",
+    desc: "Tu muro de payouts con la captura, la cuenta y el importe de cada retiro, el payout medio y tu funding ratio.",
   },
 ];
 
@@ -113,84 +120,6 @@ const FAQS = [
     a: "Está pensado para trading activo en general — tú decides qué instrumentos y estrategias registrar.",
   },
 ];
-
-// Vista previa estilizada del panel real de la app (sidebar + tarjetas +
-// gráfico), sin datos ni cifras concretas — es una ilustración de la
-// interfaz, no una captura con resultados reales.
-function ProductMockup() {
-  const ref = useRef(null);
-  function handleMove(e) {
-    const el = ref.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width - 0.5;
-    const py = (e.clientY - rect.top) / rect.height - 0.5;
-    el.style.transform = `rotateX(${py * -3}deg) rotateY(${px * 4}deg)`;
-  }
-  function handleLeave() {
-    if (ref.current) ref.current.style.transform = "rotateX(0) rotateY(0)";
-  }
-  const navItems = [
-    { icon: NotebookPen, label: "Journal", active: true },
-    { icon: ClipboardCheck, label: "Estrategia" },
-    { icon: BarChart3, label: "Informes" },
-    { icon: Target, label: "Objetivos" },
-    { icon: Wallet, label: "Contabilidad" },
-  ];
-  return (
-    <div className="landing-mockup-wrap">
-      <div className="landing-mockup" ref={ref} onMouseMove={handleMove} onMouseLeave={handleLeave} aria-hidden="true">
-        <div className="landing-mockup-chrome">
-          <span className="landing-mockup-dot" />
-          <span className="landing-mockup-dot" />
-          <span className="landing-mockup-dot" />
-          <div className="landing-mockup-url">pv-growth-capital-bitacora.netlify.app</div>
-        </div>
-        <div className="landing-mockup-body">
-          <div className="landing-mockup-sidebar">
-            {navItems.map((n) => (
-              <div className={`landing-mockup-nav-item ${n.active ? "active" : ""}`} key={n.label}>
-                <n.icon size={13} /> {n.label}
-              </div>
-            ))}
-          </div>
-          <div className="landing-mockup-main">
-            <div className="landing-mockup-heading">Resumen</div>
-            <div className="landing-mockup-stats">
-              <div className="landing-mockup-stat">
-                <div className="landing-mockup-stat-label">Operaciones</div>
-                <div className="landing-mockup-bar"><div className="landing-mockup-bar-fill" style={{ width: "70%" }} /></div>
-              </div>
-              <div className="landing-mockup-stat">
-                <div className="landing-mockup-stat-label">Racha</div>
-                <div className="landing-mockup-bar"><div className="landing-mockup-bar-fill" style={{ width: "45%" }} /></div>
-              </div>
-              <div className="landing-mockup-stat">
-                <div className="landing-mockup-stat-label">Objetivo del mes</div>
-                <div className="landing-mockup-bar"><div className="landing-mockup-bar-fill" style={{ width: "85%" }} /></div>
-              </div>
-            </div>
-            <div className="landing-mockup-chart">
-              <svg viewBox="0 0 400 70" width="100%" height="100%" preserveAspectRatio="none">
-                <polyline
-                  points="0,55 30,58 60,45 90,50 120,32 150,38 180,20 210,28 240,14 270,22 300,8 330,15 360,4 400,10"
-                  fill="none" stroke="#C6A15A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.85"
-                />
-              </svg>
-            </div>
-            <div className="landing-mockup-rows">
-              {[62, 40, 78, 30].map((w, i) => (
-                <div className="landing-mockup-row" key={i}>
-                  <div className="landing-mockup-row-bar" style={{ maxWidth: `${w}%` }} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function FaqAccordion() {
   const [openIndex, setOpenIndex] = useState(0);
@@ -788,59 +717,6 @@ export default function LandingPage({ onGoLogin, onGoSignup, onOpenLegal }) {
           .landing-nav-links { display: none; }
         }
 
-        /* ---------- Vista previa del producto (mockup) ---------- */
-        .landing-mockup-wrap { display: flex; justify-content: center; perspective: 1400px; }
-        .landing-mockup {
-          width: 100%; max-width: 860px;
-          background: #10141C;
-          border: 1px solid #262C39;
-          border-radius: 14px;
-          overflow: hidden;
-          box-shadow: 0 40px 90px -30px rgba(0,0,0,0.8);
-          transition: transform 0.2s ease-out;
-        }
-        .landing-mockup-chrome {
-          display: flex; align-items: center; gap: 10px;
-          padding: 11px 16px; background: #161B24; border-bottom: 1px solid #232A36;
-        }
-        .landing-mockup-dot { width: 9px; height: 9px; border-radius: 50%; background: #333B48; }
-        .landing-mockup-url {
-          margin-left: 8px; flex: 1; max-width: 320px;
-          background: #10141C; border: 1px solid #232A36; border-radius: 6px;
-          padding: 4px 10px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #5C6472;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .landing-mockup-body { display: flex; min-height: 320px; }
-        .landing-mockup-sidebar {
-          width: 168px; flex-shrink: 0; background: #12161F; border-right: 1px solid #232A36;
-          padding: 14px 10px; display: flex; flex-direction: column; gap: 3px;
-        }
-        .landing-mockup-nav-item {
-          display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 7px;
-          font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; color: #6E7889;
-        }
-        .landing-mockup-nav-item.active { background: #1D2733; color: #C9A23F; }
-        .landing-mockup-main { flex: 1; padding: 20px 22px; min-width: 0; }
-        .landing-mockup-heading {
-          font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em;
-          color: #5C6472; text-transform: uppercase; margin-bottom: 14px;
-        }
-        .landing-mockup-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
-        .landing-mockup-stat {
-          background: #171D28; border: 1px solid #232A36; border-radius: 9px; padding: 12px;
-        }
-        .landing-mockup-stat-label { font-family: 'IBM Plex Sans', sans-serif; font-size: 10px; color: #5C6472; margin-bottom: 8px; }
-        .landing-mockup-bar { height: 6px; border-radius: 999px; background: #232A36; overflow: hidden; }
-        .landing-mockup-bar-fill { height: 100%; background: linear-gradient(90deg, #8891A1, #C6A15A); border-radius: 999px; }
-        .landing-mockup-chart { height: 90px; border-radius: 9px; background: #171D28; border: 1px solid #232A36; margin-bottom: 16px; padding: 10px; }
-        .landing-mockup-rows { display: flex; flex-direction: column; gap: 7px; }
-        .landing-mockup-row { display: flex; align-items: center; gap: 10px; }
-        .landing-mockup-row-bar { height: 8px; border-radius: 999px; background: #1E2530; flex: 1; }
-        @media (max-width: 640px) {
-          .landing-mockup-sidebar { display: none; }
-          .landing-mockup-stats { grid-template-columns: 1fr; }
-        }
-
         /* ---------- FAQ ---------- */
         .landing-faq { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
         .landing-faq-item { border: 1px solid #1B212C; border-radius: 12px; background: #10141C; overflow: hidden; }
@@ -875,7 +751,7 @@ export default function LandingPage({ onGoLogin, onGoSignup, onOpenLegal }) {
               <path d="M18 15L16 17M18 15L20 17" stroke="#E2C589" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </span>
-          PV GROWTH CAPITAL — BITÁCORA
+          RCPV BUSINESS — BITÁCORA
         </div>
         <nav className="landing-nav-links">
           <a href="#como-funciona">Cómo funciona</a>
@@ -995,7 +871,7 @@ export default function LandingPage({ onGoLogin, onGoSignup, onOpenLegal }) {
           <div className="landing-section-title">Tu bitácora, ordenada de verdad</div>
         </Reveal>
         <Reveal>
-          <ProductMockup />
+          <LandingDemo />
         </Reveal>
       </section>
 
@@ -1045,6 +921,7 @@ export default function LandingPage({ onGoLogin, onGoSignup, onOpenLegal }) {
               <div className="landing-pricing-item"><Check size={15} /> Informes y curva de capital</div>
               <div className="landing-pricing-item"><Check size={15} /> Objetivos y seguimiento de resultados</div>
               <div className="landing-pricing-item"><Check size={15} /> Contabilidad de cuentas y retiros</div>
+              <div className="landing-pricing-item"><Check size={15} /> Muro de payouts con tus capturas</div>
             </div>
 
             <button className="landing-btn-gold large" style={{ width: "100%", justifyContent: "center" }} onClick={onGoSignup}>
