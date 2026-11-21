@@ -31,6 +31,7 @@ import { supabase, conReintento } from "./supabaseClient";
 import OperativaImagen from "./OperativaImagen";
 import ImportarOperaciones from "./ImportarOperaciones";
 import { rutaDeCaptura, useUrlCaptura } from "./capturasUrls";
+import { comprimirCaptura, extensionDeBlob, ImagenIlegibleError } from "./comprimirCaptura";
 import { DIAS_SEMANA, celdasMes } from "./utils/calendario";
 import { enmascarar } from "./utils/importes";
 
@@ -183,6 +184,8 @@ export default function TradingJournal({ session }) {
   const [formError, setFormError] = useState(false);
   // Mensaje real de Supabase del último insert/update/delete fallido.
   const [errorDetalle, setErrorDetalle] = useState("");
+  // Aviso cuando la captura elegida no se puede leer (p. ej. HEIC en Chrome).
+  const [avisoCaptura, setAvisoCaptura] = useState("");
 
   const cargarCuentasActivas = useCallback(async () => {
     const { data, error } = await conReintento(() =>
@@ -505,6 +508,7 @@ export default function TradingJournal({ session }) {
     setCapturaFile(null);
     setCapturaPreview(null);
     setFormError(false);
+    setAvisoCaptura("");
     setShowForm(true);
   }
 
@@ -518,12 +522,14 @@ export default function TradingJournal({ session }) {
     setCapturaFile(null);
     setCapturaPreview(t.captura_url || null);
     setFormError(false);
+    setAvisoCaptura("");
     setShowForm(true);
   }
 
   function cerrarForm() {
     setShowForm(false);
     setFormError(false);
+    setAvisoCaptura("");
     setEditingId(null);
     setCapturaFile(null);
     setCapturaPreview(null);
@@ -533,11 +539,13 @@ export default function TradingJournal({ session }) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
+    setAvisoCaptura("");
     setCapturaFile(file);
     setCapturaPreview(URL.createObjectURL(file));
   }
 
   function quitarCaptura() {
+    setAvisoCaptura("");
     setCapturaFile(null);
     setCapturaPreview(null);
     setForm((f) => ({ ...f, captura_url: "" }));
@@ -619,10 +627,25 @@ export default function TradingJournal({ session }) {
 
     if (capturaFile) {
       setSubiendoCaptura(true);
-      const extension = capturaFile.name.split(".").pop();
-      const path = `${session.user.id}/${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from("capturas").upload(path, capturaFile, {
+      setAvisoCaptura("");
+      let blob;
+      try {
+        blob = await comprimirCaptura(capturaFile);
+      } catch (e) {
+        setSubiendoCaptura(false);
+        if (e instanceof ImagenIlegibleError) {
+          // No se sube el original: se pide otra captura.
+          console.error(e);
+          setAvisoCaptura(e.message);
+        } else {
+          mostrarFallo(e, true);
+        }
+        return;
+      }
+      const path = `${session.user.id}/${Date.now()}.${extensionDeBlob(blob)}`;
+      const { error: uploadError } = await supabase.storage.from("capturas").upload(path, blob, {
         cacheControl: "3600",
+        contentType: blob.type,
         upsert: false,
       });
       setSubiendoCaptura(false);
@@ -1782,6 +1805,10 @@ export default function TradingJournal({ session }) {
             </div>
 
             {errorContratos && <div className="jt-acc-hint jt-hint-error" role="alert">{errorContratos}</div>}
+
+            {avisoCaptura && (
+              <div className="jt-error-banner" role="alert">{avisoCaptura}</div>
+            )}
 
             {formError && (
               <div className="jt-error-banner">
