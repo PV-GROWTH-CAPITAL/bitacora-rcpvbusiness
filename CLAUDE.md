@@ -72,6 +72,7 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 - No añadir dependencias sin preguntar antes.
 - Los textos de la interfaz, en español de España.
 - Este proyecto es JavaScript (no TypeScript) con React 18: al aplicar skills de React, traduce los ejemplos de TS a JS y sáltate las reglas que sean solo de React 19 (use(), quitar forwardRef).
+- Tests: Vitest con la versión más nueva compatible con Vite 5.4 (no subir Vite para esto). Solo datos de ejemplo y mocks; los tests nunca se conectan a Supabase ni a ningún servicio real.
 
 ## Reglas de base de datos (mandan sobre cualquier skill)
 - Nunca ejecutes SQL (execute_sql, apply_migration, supabase db push ni similares) contra producción.
