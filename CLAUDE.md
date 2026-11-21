@@ -79,3 +79,11 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 - Los cambios de esquema van siempre como archivo en sql/ con su rollback en sql/rollback/; los pego yo a mano, primero en pruebas y luego en producción.
 - Solo lectura permitida sin preguntar: get_advisors, list_tables, search_docs.
 - No uses la CLI de Supabase para migraciones en este proyecto.
+
+## Reglas de PWA (cuando se haga)
+- Usar vite-plugin-pwa (te autorizo esa dependencia cuando hagamos la PWA, no antes).
+- Precachear SOLO el build estático (JS, CSS, HTML, iconos, fuentes).
+- Todo lo que vaya a *.supabase.co (auth, REST, storage, imágenes de capturas y payouts) va siempre por la red, NetworkOnly, sin guardarse nunca en caché.
+- Actualizaciones con aviso ("Hay una versión nueva · Actualizar"), nunca recarga automática, para no perder formularios a medio rellenar.
+- Sin notificaciones push ni sincronización en segundo plano.
+- Textos en español de España.
