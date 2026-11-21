@@ -71,6 +71,7 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 - Cambios de más de un archivo: rama nueva y PR en borrador, para probar en el deploy preview de Netlify antes de fusionar.
 - No añadir dependencias sin preguntar antes.
 - Los textos de la interfaz, en español de España.
+- Este proyecto es JavaScript (no TypeScript) con React 18: al aplicar skills de React, traduce los ejemplos de TS a JS y sáltate las reglas que sean solo de React 19 (use(), quitar forwardRef).
 
 ## Reglas de base de datos (mandan sobre cualquier skill)
 - Nunca ejecutes SQL (execute_sql, apply_migration, supabase db push ni similares) contra producción.
