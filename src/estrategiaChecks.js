@@ -2,11 +2,13 @@
 // checks en el jsonb de estrategia_registros (lo que siguen usando Estadísticas e Informes).
 // Sin React: lo usan EstrategiaSesion (en directo) y EstrategiaEstadisticas (detalle y borrado).
 import { supabase } from "./supabaseClient";
+import { extensionDeBlob } from "./comprimirCaptura";
+
+// La compresión vive en comprimirCaptura.js (compartida con el Journal).
+export { comprimirCaptura } from "./comprimirCaptura";
 
 export const CHECKS_TABLE = "estrategia_checks";
 const BUCKET = "capturas";
-const MAX_ANCHO = 1600;
-const CALIDAD_WEBP = 0.8;
 
 // Carpeta de las capturas de un registro. La primera carpeta tiene que ser el uid
 // (lo exigen las políticas del bucket).
@@ -14,31 +16,8 @@ function carpetaRegistro(userId, registroId) {
   return `${userId}/estrategia/${registroId}`;
 }
 
-function canvasABlob(canvas, tipo, calidad) {
-  return new Promise((resolve) => canvas.toBlob(resolve, tipo, calidad));
-}
-
-// Reduce a MAX_ANCHO px de ancho como mucho y convierte a WebP. Si el navegador no sabe
-// generar WebP (toBlob devuelve otro tipo, p. ej. Safari antiguo), usa JPEG.
-export async function comprimirCaptura(file) {
-  const bitmap = await createImageBitmap(file);
-  const escala = Math.min(1, MAX_ANCHO / bitmap.width);
-  const ancho = Math.round(bitmap.width * escala);
-  const alto = Math.round(bitmap.height * escala);
-  const canvas = document.createElement("canvas");
-  canvas.width = ancho;
-  canvas.height = alto;
-  canvas.getContext("2d").drawImage(bitmap, 0, 0, ancho, alto);
-  bitmap.close?.();
-
-  let blob = await canvasABlob(canvas, "image/webp", CALIDAD_WEBP);
-  if (!blob || blob.type !== "image/webp") blob = await canvasABlob(canvas, "image/jpeg", 0.85);
-  if (!blob) throw new Error("No se pudo comprimir la imagen");
-  return blob;
-}
-
 export async function subirCaptura({ userId, registroId, criterioId, blob }) {
-  const extension = blob.type === "image/webp" ? "webp" : "jpg";
+  const extension = extensionDeBlob(blob);
   const path = `${carpetaRegistro(userId, registroId)}/${criterioId || "check"}-${Date.now()}.${extension}`;
   const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
     cacheControl: "31536000",
