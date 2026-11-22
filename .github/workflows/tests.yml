@@ -1,0 +1,21 @@
+# Ejecuta los tests y el build en cada PR (y al fusionar en main).
+# Los tests no se conectan a Supabase; el build no necesita las variables VITE_*.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
