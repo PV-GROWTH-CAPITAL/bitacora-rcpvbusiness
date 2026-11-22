@@ -1,23 +1,12 @@
-// Pruebas del informe «contado como un cuento» (src/utils/informeCuento.js). Sin dependencias:
-//   node scripts/probar-informe.js
-// Sale con código 1 si algo falla. Los datos son inventados.
+// Pruebas del informe «contado como un cuento» (src/utils/informeCuento.js). Se ejecutan con npm test. Los datos son inventados.
 import {
   construirInforme, evaluarReglas, normalizarReglas, reglasValidas, compromisosDeSemana, exportarParaVideo,
   textoPlano, sumarDias, diasEntre, lunesDe, fechaConDia, minutosDeHora, REGLAS_POR_DEFECTO,
   leerPlanReglas, serializarPlanReglas, versionDeSemana, reglasDeSemana, guardarVersion, quitarVersion,
   marcarReglaPropia, reglasPropiasDelPeriodo, reglasCambianEnPeriodo, ajustesValidos,
 } from "../src/utils/informeCuento.js";
+import { igual } from "./igual.js";
 
-let fallos = 0;
-let pruebas = 0;
-function igual(real, esperado, nombre) {
-  pruebas++;
-  const a = JSON.stringify(real);
-  const b = JSON.stringify(esperado);
-  if (a === b) return;
-  fallos++;
-  console.error(`✗ ${nombre}\n    esperado: ${b}\n    obtenido: ${a}`);
-}
 
 // ---------------------------------------------------------------- Fechas
 igual(sumarDias("2026-10-30", 3), "2026-11-02", "sumarDias cruza de mes");
@@ -172,6 +161,3 @@ igual(conAjustes.reglas.map((r) => [r.id, r.titulo, r.estado]), [["R1", "Compras
 igual(exportarParaVideo(construirInforme({ ...base, propias: [{ id: "x", titulo: "X" }] })).reglas.map((r) => r.cumplida).slice(-1), [null], "JSON: regla propia sin marcar");
 const formOk = { valores: form, fijas: s9.fijas, propias: [{ id: "a", titulo: "Algo" }] };
 igual([ajustesValidos(formOk), ajustesValidos({ ...formOk, propias: [{ id: "a", titulo: "  " }] }), ajustesValidos({ ...formOk, fijas: { R1: { activa: true, titulo: "" } } })], [true, false, false], "validación de títulos");
-
-console.log(fallos ? `\n${fallos} de ${pruebas} pruebas han fallado.` : `✓ ${pruebas} pruebas correctas.`);
-process.exit(fallos ? 1 : 0);

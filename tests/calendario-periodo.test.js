@@ -1,20 +1,9 @@
-// Pruebas del filtro de periodo y del calendario de dinero (src/utils/). Sin dependencias:
-//   node scripts/probar-calendario.js
-// Sale con código 1 si algo falla.
+// Pruebas del filtro de periodo y del calendario de dinero (src/utils/). Se ejecutan con npm test.
 import { hoyIso, ultimoDiaMes, rangoDeFiltro, etiquetaFiltro, filtroInicial, aniosDisponibles } from "../src/utils/periodo.js";
 import { celdasMes, semanasMes } from "../src/utils/calendario.js";
 import { enRango, empresaDeRetiro, movimientosPorDia, totalesPorMes, resumenPayouts } from "../src/utils/estadisticasFondeo.js";
+import { igual } from "./igual.js";
 
-let fallos = 0;
-let pruebas = 0;
-function igual(real, esperado, nombre) {
-  pruebas++;
-  const a = JSON.stringify(real);
-  const b = JSON.stringify(esperado);
-  if (a === b) return;
-  fallos++;
-  console.error(`✗ ${nombre}\n    esperado: ${b}\n    obtenido: ${a}`);
-}
 
 // ---------------------------------------------------------------- Hoy y aritmética de días
 // 23:30 UTC del 31 de diciembre ya es 1 de enero en Madrid; las 22:30 UTC de un día de verano, el día siguiente.
@@ -91,9 +80,3 @@ igual(retiros.slice(0, 3).map((r) => empresaDeRetiro(r, compras)), ["APEX", "TOP
 igual(empresaDeRetiro({ proveedor: null, cuenta: "X9" }, compras), "", "empresaDeRetiro: sin pistas");
 const res = resumenPayouts(retiros, rangoDeFiltro(f({ modo: "mes" }), HOY));
 igual([res.total, res.numero], [1500.3, 3], "resumenPayouts con el rango del filtro (noviembre)");
-
-if (fallos) {
-  console.error(`\n${fallos} de ${pruebas} pruebas han fallado.`);
-  process.exit(1);
-}
-console.log(`✓ ${pruebas} pruebas correctas.`);

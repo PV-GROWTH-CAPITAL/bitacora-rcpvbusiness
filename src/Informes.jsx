@@ -701,7 +701,7 @@ export default function Informes({ session }) {
   );
 }
 
-function resumenDePeriodo(list) {
+export function resumenDePeriodo(list) {
   const n = list.length;
   const wins = list.filter((t) => Number(t.resultado) > 0);
   const losses = list.filter((t) => Number(t.resultado) < 0);
@@ -720,7 +720,7 @@ function resumenDePeriodo(list) {
   return { n, totalPnl, winRate, wins: wins.length, losses: losses.length, mejorDia, peorDia };
 }
 
-function resumenReglas(list) {
+export function resumenReglas(list) {
   const total = list.length;
   const cumplidos = list.filter((r) => r.cumplida).length;
   const pct = total > 0 ? Math.round((cumplidos / total) * 100) : null;
