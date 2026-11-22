@@ -5,22 +5,7 @@ antes a funciones puras (por ejemplo en `src/utils/`), sin cambiar nada de lo qu
 
 ## Fallos detectados (para el PR B, con su test)
 
-Los tests de `tests/journal.test.js` que llevan «fallo conocido» fijan el comportamiento de ahora:
-al arreglar cada fallo, ese test se cambia por el bueno.
-
-### Fechas
-- [ ] **Racha actual del Journal: ordenar por fecha y hora.** `calcularStats` recibe
-  `ordenCronologico()` (`src/utils/journal.js`), que solo ordena por `fecha`. Si un día tiene varias
-  operaciones, la racha depende del orden en que llegan de Supabase. Ordenar por `fecha` +
-  `hora_entrada` (y quizá `created_at` para desempatar).
-- [ ] **Unificar «hoy» en hora de Madrid en Journal y Objetivos.** `todayIsoLocal()` en
-  `src/utils/journal.js` y `isoOf(new Date())` en `src/Objetivos.jsx` usan la fecha local del
-  navegador, mientras que Contabilidad, Payouts e Informes usan `hoyIso()` de `src/utils/periodo.js`
-  (día civil de Madrid). Desde fuera de España, un objetivo puede pasar a «fallido» otro día.
-  También afecta a `rangoSugerido()` de Objetivos.
-- [ ] **Fecha por defecto de «Nueva operación» calculada al abrir el formulario.** `emptyForm.fecha`
-  (`src/journal/formulario/useFormularioOperacion.js`) se calcula al cargar el módulo: con la pestaña
-  abierta pasada la medianoche, el formulario propone el día anterior.
+Al arreglar cada fallo se quita de esta lista y su test pasa a comprobar lo correcto.
 
 ### Colores
 - [ ] **Una operación de 0 $ se ve «plana» en todas partes.** El calendario ya la pinta en azul
@@ -58,6 +43,6 @@ al arreglar cada fallo, ese test se cambia por el bueno.
 - `tablaPeriodos`: filas por trimestre o mes con ingresos, gastos, neto y acumulado; marca «en curso» y futuros.
 
 ### `src/Objetivos.jsx`
-- `rangoSugerido(tipo)`: fechas por defecto de semana, mes, trimestre y año.
+(`rangoSugerido` ya está en `src/utils/objetivos.js` con sus tests en `tests/objetivos.test.js`.)
 - `pnlEnRango` y `estadoDe`: logrado / fallido / en curso según la meta en $ o el estado manual.
 - % de progreso de la barra y el recuento de logrados, fallidos y en curso.

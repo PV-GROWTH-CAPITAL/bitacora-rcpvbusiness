@@ -6,39 +6,14 @@ import { rutaDeCaptura, useUrlCaptura } from "../../capturasUrls";
 import { comprimirCaptura, extensionDeBlob, ImagenIlegibleError } from "../../comprimirCaptura";
 import {
   parseLotes,
-  todayIsoLocal,
+  formInicial,
   alternarCuenta,
   valorDeCuenta,
   errorDeContratos,
   puedeGuardarOperacion,
 } from "../../utils/journal";
+import { hoyIso } from "../../utils/periodo";
 import { useJournal, TABLE } from "../JournalContext";
-
-// Ojo: la fecha se calcula al cargar el módulo (ver TESTS_PENDIENTES.md).
-const emptyForm = {
-  fecha: todayIsoLocal(),
-  cuenta: "",
-  instrumento: "MNQ",
-  direccion: "Largo",
-  contratos: 1,
-  puntos: "",
-  resultado: "",
-  estrategia: "",
-  notas: "",
-  enlace: "",
-  hora_entrada: "",
-  hora_salida: "",
-  captura_url: "",
-};
-
-function formInicial(trade, filtroCuenta) {
-  if (!trade) return { ...emptyForm, cuenta: filtroCuenta !== "Todas" ? filtroCuenta : "" };
-  return {
-    ...emptyForm,
-    ...trade,
-    contratos: trade.contratos === null || trade.contratos === undefined ? "1" : String(Number(trade.contratos)).replace(".", ","),
-  };
-}
 
 export function useFormularioOperacion() {
   const { state, actions, meta } = useJournal();
@@ -47,7 +22,7 @@ export function useFormularioOperacion() {
   const editingId = trade ? trade.id : null;
   const session = meta.session;
 
-  const [form, setForm] = useState(() => formInicial(trade, filtroCuenta));
+  const [form, setForm] = useState(() => formInicial(trade, filtroCuenta, hoyIso()));
   const [cuentasSel, setCuentasSel] = useState(() =>
     !trade && cuentasActivas.includes(filtroCuenta) ? [filtroCuenta] : []
   );

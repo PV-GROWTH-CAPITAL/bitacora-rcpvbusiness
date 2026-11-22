@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Plus, X, Trash2, Check, ChevronLeft, ChevronRight, Target, Pencil } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import { enmascarar } from "./utils/importes";
+import { hoyIso } from "./utils/periodo";
+import { rangoSugerido } from "./utils/objetivos";
 
 // Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
 function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
@@ -27,40 +29,6 @@ function fmtDateShort(iso) {
   if (isNaN(dt)) return iso;
   return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
 }
-function isoOf(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-// Sugiere fecha_inicio / fecha_fin por defecto según el tipo de objetivo
-function rangoSugerido(tipo) {
-  const hoy = new Date();
-  if (tipo === "semanal") {
-    const dow = (hoy.getDay() + 6) % 7;
-    const inicio = new Date(hoy);
-    inicio.setDate(hoy.getDate() - dow);
-    const fin = new Date(inicio);
-    fin.setDate(inicio.getDate() + 6);
-    return { inicio: isoOf(inicio), fin: isoOf(fin) };
-  }
-  if (tipo === "mensual") {
-    const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
-    return { inicio: isoOf(inicio), fin: isoOf(fin) };
-  }
-  if (tipo === "trimestral") {
-    const q = Math.floor(hoy.getMonth() / 3);
-    const inicio = new Date(hoy.getFullYear(), q * 3, 1);
-    const fin = new Date(hoy.getFullYear(), q * 3 + 3, 0);
-    return { inicio: isoOf(inicio), fin: isoOf(fin) };
-  }
-  const inicio = new Date(hoy.getFullYear(), 0, 1);
-  const fin = new Date(hoy.getFullYear(), 11, 31);
-  return { inicio: isoOf(inicio), fin: isoOf(fin) };
-}
-
 export default function Objetivos() {
   return (
     <div className="obj-root">
@@ -183,8 +151,6 @@ function SeccionObjetivos() {
   const [fNotas, setFNotas] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const hoyIso = useMemo(() => isoOf(new Date()), []);
-
   const cargar = useCallback(async () => {
     setError(false);
     const [{ data: obs, error: err1 }, { data: ops, error: err2 }] = await Promise.all([
@@ -299,7 +265,7 @@ function SeccionObjetivos() {
         const actual = pnlEnRango(o.fecha_inicio, o.fecha_fin);
         const cumplido = o.meta_valor > 0 ? actual >= o.meta_valor : actual >= 0;
         if (cumplido) return "logrado";
-        if (o.fecha_fin < hoyIso) return "fallido";
+        if (o.fecha_fin < hoyIso()) return "fallido";
         return "en_curso";
       }
       const estado = o.estado || "pendiente";
@@ -307,7 +273,7 @@ function SeccionObjetivos() {
       if (estado === "fallido") return "fallido";
       return "en_curso";
     },
-    [pnlEnRango, hoyIso]
+    [pnlEnRango]
   );
 
   const visibles = useMemo(
