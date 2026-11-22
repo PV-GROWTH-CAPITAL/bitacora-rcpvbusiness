@@ -1,6 +1,5 @@
 // Cálculos del Journal (src/TradingJournal.jsx y src/journal/). Funciones puras: reciben las
 // operaciones (filas de `trades`) y devuelven números u objetos; no tocan Supabase ni el DOM.
-// Se sacaron del componente tal cual estaban, con sus fallos conocidos (ver TESTS_PENDIENTES.md).
 import { DIAS_SEMANA } from "./calendario.js";
 
 // Contratos/lotaje: admite coma o punto como separador decimal y hasta 2 decimales.
@@ -70,12 +69,6 @@ export function bucketLabel(seconds) {
   return DURATION_BUCKETS[DURATION_BUCKETS.length - 1].label;
 }
 
-// Fecha local del navegador (no la de Madrid; ver TESTS_PENDIENTES.md).
-export function todayIsoLocal() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 // Nombres de cuenta distintos con operaciones, precedidos de «Todas» (el filtro de la cabecera).
 export function cuentasDeOperaciones(trades) {
   const set = new Set(trades.map((t) => t.cuenta).filter(Boolean));
@@ -95,6 +88,14 @@ export function filtrarPorCuenta(trades, cuenta) {
 export function filtrarPorDias(trades, dias) {
   if (dias.length === 0) return trades;
   return trades.filter((t) => dias.includes(t.fecha));
+}
+
+// Color de un resultado en $: "win" (> 0), "loss" (< 0) o "flat" (0, vacío o no numérico).
+// Lo comparten la cinta, la tabla y el calendario, para que una de 0 $ se vea igual en todas partes.
+export function tonoResultado(r) {
+  const n = Number(r);
+  if (r === null || r === "" || !Number.isFinite(n) || n === 0) return "flat";
+  return n > 0 ? "win" : "loss";
 }
 
 // P&L y nº de operaciones por día: { "YYYY-MM-DD": { total, count } }.
@@ -127,9 +128,23 @@ export function diasSobreRiesgo(totales, year, month, riesgoMaximo) {
   return Object.entries(totales).filter(([iso, v]) => iso.startsWith(prefix) && v.total < -riesgoMaximo).length;
 }
 
-// Solo ordena por fecha: dentro de un día se respeta el orden de llegada.
+// Orden de las operaciones en el tiempo: por fecha y, dentro del día, por hora de entrada.
+// Las que no tienen hora van detrás de las que sí, ordenadas por cuándo se apuntaron (created_at).
+// Si todo empata se respeta el orden de llegada (sort es estable).
+function comparar(a, b) {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export function ordenCronologico(trades) {
-  return [...trades].sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+  return [...trades].sort(
+    (a, b) =>
+      comparar(a.fecha || null, b.fecha || null) ||
+      comparar(horaASegundos(a.hora_entrada), horaASegundos(b.hora_entrada)) ||
+      comparar(a.created_at || null, b.created_at || null)
+  );
 }
 
 export function curvaCapital(cronologicas) {
@@ -251,9 +266,16 @@ export function calcularAnalisis(filtered) {
   const largos = filtered.filter((t) => t.direccion === "Largo").length;
   const cortos = filtered.filter((t) => t.direccion === "Corto").length;
 
-  // Mejor / peor operación
-  const bestTrade = filtered.reduce((a, b) => (Number(b.resultado) > Number(a.resultado) ? b : a));
-  const worstTrade = filtered.reduce((a, b) => (Number(b.resultado) < Number(a.resultado) ? b : a));
+  // Mejor / peor operación: solo entre las que tienen un resultado numérico; si no hay, null («—»).
+  const conResultado = filtered.filter(
+    (t) => t.resultado !== null && t.resultado !== undefined && t.resultado !== "" && Number.isFinite(Number(t.resultado))
+  );
+  const bestTrade = conResultado.length
+    ? conResultado.reduce((a, b) => (Number(b.resultado) > Number(a.resultado) ? b : a))
+    : null;
+  const worstTrade = conResultado.length
+    ? conResultado.reduce((a, b) => (Number(b.resultado) < Number(a.resultado) ? b : a))
+    : null;
 
   return {
     n,
@@ -309,6 +331,33 @@ export function csvDeOperaciones(trades) {
 }
 
 // ---- Formulario de operación ----
+
+const FORMULARIO_VACIO = {
+  cuenta: "",
+  instrumento: "MNQ",
+  direccion: "Largo",
+  contratos: 1,
+  puntos: "",
+  resultado: "",
+  estrategia: "",
+  notas: "",
+  enlace: "",
+  hora_entrada: "",
+  hora_salida: "",
+  captura_url: "",
+};
+
+// Valores con los que se abre el formulario. `hoy` es la fecha por defecto de una operación nueva:
+// se pasa al abrirlo (no al cargar la página), para que no proponga el día anterior.
+export function formInicial(trade, filtroCuenta, hoy) {
+  if (!trade) return { ...FORMULARIO_VACIO, fecha: hoy, cuenta: filtroCuenta !== "Todas" ? filtroCuenta : "" };
+  return {
+    ...FORMULARIO_VACIO,
+    fecha: hoy,
+    ...trade,
+    contratos: trade.contratos === null || trade.contratos === undefined ? "1" : String(Number(trade.contratos)).replace(".", ","),
+  };
+}
 
 // Al marcar una cuenta se mantiene el orden de la lista de cuentas activas.
 export function alternarCuenta(sel, c, cuentasActivas) {

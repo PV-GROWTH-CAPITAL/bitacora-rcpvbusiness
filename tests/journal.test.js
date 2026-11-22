@@ -1,5 +1,4 @@
-// Cálculos del Journal (src/utils/journal.js). Fijan el comportamiento de antes del refactor,
-// fallos incluidos (marcados con «fallo conocido»; se arreglan en otro PR, ver TESTS_PENDIENTES.md).
+// Cálculos del Journal (src/utils/journal.js).
 import { describe, it, expect } from "vitest";
 import {
   parseLotes,
@@ -10,7 +9,6 @@ import {
   duracionSegundos,
   bucketLabel,
   DURATION_BUCKETS,
-  todayIsoLocal,
   cuentasDeOperaciones,
   estrategiasDeOperaciones,
   filtrarPorCuenta,
@@ -29,7 +27,10 @@ import {
   valorDeCuenta,
   errorDeContratos,
   puedeGuardarOperacion,
+  formInicial,
+  tonoResultado,
 } from "../src/utils/journal.js";
+import { hoyIso } from "../src/utils/periodo.js";
 
 // 2026-11-16 es lunes.
 const op = (id, fecha, resultado, extra = {}) => ({ id, fecha, resultado, ...extra });
@@ -76,10 +77,11 @@ describe("duraciones", () => {
 });
 
 describe("hoy", () => {
-  it("todayIsoLocal usa la fecha local del navegador", () => {
-    const d = new Date();
-    const esperado = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    expect(todayIsoLocal()).toBe(esperado);
+  it("el Journal usa el día civil de Madrid (hoyIso), no el del navegador", () => {
+    // 23:30 UTC del 22 de noviembre ya es 23 en Madrid (UTC+1).
+    expect(hoyIso(new Date("2026-11-22T23:30:00Z"))).toBe("2026-11-23");
+    // En verano (UTC+2), 22:30 UTC del 30 de junio ya es 1 de julio.
+    expect(hoyIso(new Date("2026-06-30T22:30:00Z"))).toBe("2026-07-01");
   });
 });
 
@@ -140,11 +142,34 @@ describe("totales por día, mes y riesgo", () => {
 
 describe("orden cronológico, curva y ticker", () => {
   const ops = [op("c", "2026-11-18", 10), op("a", "2026-11-16", 5.555), op("b1", "2026-11-17", -1), op("b2", "2026-11-17", 2)];
-  it("ordena solo por fecha y respeta el orden de llegada dentro del día", () => {
+  it("ordena por fecha y, sin horas ni created_at, respeta el orden de llegada dentro del día", () => {
     expect(ordenCronologico(ops).map((t) => t.id)).toEqual(["a", "b1", "b2", "c"]);
     const alReves = [ops[3], ops[2]];
     expect(ordenCronologico(alReves).map((t) => t.id)).toEqual(["b2", "b1"]);
     expect(ops[0].id).toBe("c"); // no muta
+  });
+  it("dentro del día ordena por hora de entrada (HH:MM o HH:MM:SS)", () => {
+    const dia = [
+      op("tarde", "2026-11-17", 1, { hora_entrada: "15:00" }),
+      op("pronto", "2026-11-17", 1, { hora_entrada: "09:30:15" }),
+      op("medio", "2026-11-17", 1, { hora_entrada: "09:45" }),
+      op("antes", "2026-11-16", 1, { hora_entrada: "23:00" }),
+    ];
+    expect(ordenCronologico(dia).map((t) => t.id)).toEqual(["antes", "pronto", "medio", "tarde"]);
+  });
+  it("sin hora: detrás de las que tienen hora y por created_at entre ellas", () => {
+    const dia = [
+      op("sin2", "2026-11-17", 1, { created_at: "2026-11-17T20:00:00Z" }),
+      op("con", "2026-11-17", 1, { hora_entrada: "16:00", created_at: "2026-11-17T22:00:00Z" }),
+      op("sin1", "2026-11-17", 1, { hora_entrada: "", created_at: "2026-11-17T18:00:00Z" }),
+    ];
+    expect(ordenCronologico(dia).map((t) => t.id)).toEqual(["con", "sin1", "sin2"]);
+    expect(ordenCronologico([dia[2], dia[0], dia[1]]).map((t) => t.id)).toEqual(["con", "sin1", "sin2"]);
+  });
+  it("misma hora: desempata created_at", () => {
+    const x = op("x", "2026-11-17", 1, { hora_entrada: "10:00", created_at: "2026-11-17T15:05:00Z" });
+    const y = op("y", "2026-11-17", 1, { hora_entrada: "10:00", created_at: "2026-11-17T15:01:00Z" });
+    expect(ordenCronologico([x, y]).map((t) => t.id)).toEqual(["y", "x"]);
   });
   it("curva de capital acumulada a 2 decimales", () => {
     expect(curvaCapital(ordenCronologico(ops))).toEqual([
@@ -200,10 +225,10 @@ describe("stats", () => {
     const antes = [op(1, "2026-11-16", 0), op(2, "2026-11-17", 10), op(3, "2026-11-18", 10)];
     expect(calcularStats(antes, ordenCronologico(antes))).toMatchObject({ streak: 2, streakType: "win" });
   });
-  it("fallo conocido: dentro de un día, la racha depende del orden de llegada", () => {
+  it("dentro de un día, la racha sigue la hora de entrada, no el orden de llegada", () => {
     const a = op(1, "2026-11-16", 10, { hora_entrada: "15:00" });
     const b = op(2, "2026-11-16", -10, { hora_entrada: "09:30" });
-    expect(calcularStats([a, b], ordenCronologico([a, b]))).toMatchObject({ streak: 1, streakType: "loss" });
+    expect(calcularStats([a, b], ordenCronologico([a, b]))).toMatchObject({ streak: 1, streakType: "win" });
     expect(calcularStats([b, a], ordenCronologico([b, a]))).toMatchObject({ streak: 1, streakType: "win" });
   });
 });
@@ -283,9 +308,15 @@ describe("análisis avanzado", () => {
     expect(a.bestTrade.id).toBe(1);
     expect(a.worstTrade.id).toBe(3);
   });
-  it("fallo conocido: sin resultados numéricos, mejor y peor son la primera", () => {
-    const r = calcularAnalisis([op(1, "2026-11-16", ""), op(2, "2026-11-17", null)]);
-    expect([r.bestTrade.id, r.worstTrade.id]).toEqual([1, 1]);
+  it("sin resultados numéricos, mejor y peor son null (el panel muestra «—»)", () => {
+    const r = calcularAnalisis([op(1, "2026-11-16", ""), op(2, "2026-11-17", null), op(3, "2026-11-17", "abc")]);
+    expect([r.bestTrade, r.worstTrade]).toEqual([null, null]);
+  });
+  it("un resultado vacío no cuenta como 0: no gana a uno negativo ni pierde contra uno positivo", () => {
+    const r = calcularAnalisis([op(1, "2026-11-16", ""), op(2, "2026-11-17", -40), op(3, "2026-11-17", null)]);
+    expect([r.bestTrade.id, r.worstTrade.id]).toEqual([2, 2]);
+    const p = calcularAnalisis([op(1, "2026-11-16", null), op(2, "2026-11-17", 25)]);
+    expect([p.bestTrade.id, p.worstTrade.id]).toEqual([2, 2]);
   });
   it("sin horas no hay duraciones ni tramos con datos", () => {
     const r = calcularAnalisis([op(1, "2026-11-16", 10)]);
@@ -353,5 +384,28 @@ describe("formulario de operación", () => {
     expect(puedeGuardarOperacion({ ...base, errorContratos: "x" })).toBe(false);
     expect(puedeGuardarOperacion({ ...base, resultados: [] })).toBe(false);
     expect(puedeGuardarOperacion({ ...base, resultados: ["10", ""] })).toBe(false);
+  });
+});
+
+describe("formulario: valores al abrir", () => {
+  it("una operación nueva lleva la fecha de hoy que se le pasa al abrir", () => {
+    expect(formInicial(null, "Todas", "2026-11-23")).toMatchObject({ fecha: "2026-11-23", cuenta: "", instrumento: "MNQ", contratos: 1 });
+    // Abrir el formulario otro día propone ese otro día (antes quedaba fijo al cargar la página).
+    expect(formInicial(null, "Todas", "2026-11-24").fecha).toBe("2026-11-24");
+  });
+  it("con una cuenta filtrada la propone", () => {
+    expect(formInicial(null, "Apex 1", "2026-11-23").cuenta).toBe("Apex 1");
+  });
+  it("al editar conserva la fecha de la operación y muestra los contratos con coma", () => {
+    const f = formInicial({ id: 7, fecha: "2026-10-01", contratos: 1.5, resultado: 20 }, "Todas", "2026-11-23");
+    expect(f).toMatchObject({ fecha: "2026-10-01", contratos: "1,5", resultado: 20, instrumento: "MNQ" });
+    expect(formInicial({ id: 8, fecha: "2026-10-01", contratos: null }, "Todas", "2026-11-23").contratos).toBe("1");
+  });
+});
+
+describe("color de un resultado", () => {
+  it("ganadora, perdedora y plana (0 $, vacío o no numérico)", () => {
+    expect([10, "2.5", -10, "-0.01"].map(tonoResultado)).toEqual(["win", "win", "loss", "loss"]);
+    expect([0, "0", -0, "", null, undefined, "abc"].map(tonoResultado)).toEqual(["flat", "flat", "flat", "flat", "flat", "flat", "flat"]);
   });
 });

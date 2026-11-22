@@ -3,7 +3,7 @@
 import React from "react";
 import { Trash2, Pencil, ChevronDown, ChevronRight } from "lucide-react";
 import { useUrlCaptura } from "../capturasUrls";
-import { fmtLotes, fmtDuration, duracionSegundos } from "../utils/journal";
+import { fmtLotes, fmtDuration, duracionSegundos, tonoResultado } from "../utils/journal";
 import { fmtMoney, fmtDate } from "./formato";
 import { useJournal } from "./JournalContext";
 
@@ -35,7 +35,7 @@ export default function FilaOperacion({ t }) {
         <td>{t.direccion}</td>
         <td className="jt-mono">{fmtLotes(t.contratos)}</td>
         <td>{t.estrategia || "—"}</td>
-        <td className={`jt-mono ${Number(t.resultado) >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
+        <td className={`jt-mono jt-pnl-${tonoResultado(t.resultado)}`}>
           <span className="importe">{fmtMoney(t.resultado)}</span>
         </td>
         <td>

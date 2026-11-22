@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Plus, X, Trash2, Check, ChevronLeft, ChevronRight, Target, Pencil } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
 import { enmascarar } from "./utils/importes";
+import { hoyIso } from "./utils/periodo";
+import { rangoSugerido, pnlEnRango, estadoObjetivo, progresoObjetivo, recuentoEstados, tieneMeta, esLimitePerdida } from "./utils/objetivos";
 
 // Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
 function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
@@ -27,40 +29,6 @@ function fmtDateShort(iso) {
   if (isNaN(dt)) return iso;
   return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
 }
-function isoOf(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-// Sugiere fecha_inicio / fecha_fin por defecto según el tipo de objetivo
-function rangoSugerido(tipo) {
-  const hoy = new Date();
-  if (tipo === "semanal") {
-    const dow = (hoy.getDay() + 6) % 7;
-    const inicio = new Date(hoy);
-    inicio.setDate(hoy.getDate() - dow);
-    const fin = new Date(inicio);
-    fin.setDate(inicio.getDate() + 6);
-    return { inicio: isoOf(inicio), fin: isoOf(fin) };
-  }
-  if (tipo === "mensual") {
-    const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
-    return { inicio: isoOf(inicio), fin: isoOf(fin) };
-  }
-  if (tipo === "trimestral") {
-    const q = Math.floor(hoy.getMonth() / 3);
-    const inicio = new Date(hoy.getFullYear(), q * 3, 1);
-    const fin = new Date(hoy.getFullYear(), q * 3 + 3, 0);
-    return { inicio: isoOf(inicio), fin: isoOf(fin) };
-  }
-  const inicio = new Date(hoy.getFullYear(), 0, 1);
-  const fin = new Date(hoy.getFullYear(), 11, 31);
-  return { inicio: isoOf(inicio), fin: isoOf(fin) };
-}
-
 export default function Objetivos() {
   return (
     <div className="obj-root">
@@ -183,8 +151,6 @@ function SeccionObjetivos() {
   const [fNotas, setFNotas] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const hoyIso = useMemo(() => isoOf(new Date()), []);
-
   const cargar = useCallback(async () => {
     setError(false);
     const [{ data: obs, error: err1 }, { data: ops, error: err2 }] = await Promise.all([
@@ -285,46 +251,17 @@ function SeccionObjetivos() {
     cargar();
   }
 
-  const pnlEnRango = useCallback(
-    (inicio, fin) => trades.filter((t) => t.fecha >= inicio && t.fecha <= fin).reduce((s, t) => s + (Number(t.resultado) || 0), 0),
-    [trades]
-  );
+  const pnlDe = useCallback((o) => pnlEnRango(trades, o.fecha_inicio, o.fecha_fin), [trades]);
 
-  // Estado efectivo de un objetivo, ya sea de meta en $ (se calcula solo) o
-  // personal (se marca a mano): "logrado" | "fallido" | "en_curso"
-  const estadoDe = useCallback(
-    (o) => {
-      const tieneMeta = o.meta_valor != null;
-      if (tieneMeta) {
-        const actual = pnlEnRango(o.fecha_inicio, o.fecha_fin);
-        const cumplido = o.meta_valor > 0 ? actual >= o.meta_valor : actual >= 0;
-        if (cumplido) return "logrado";
-        if (o.fecha_fin < hoyIso) return "fallido";
-        return "en_curso";
-      }
-      const estado = o.estado || "pendiente";
-      if (estado === "logrado") return "logrado";
-      if (estado === "fallido") return "fallido";
-      return "en_curso";
-    },
-    [pnlEnRango, hoyIso]
-  );
+  // Estado efectivo de un objetivo: "logrado" | "fallido" | "en_curso" (ver src/utils/objetivos.js).
+  const estadoDe = useCallback((o) => estadoObjetivo(o, pnlDe(o), hoyIso()), [pnlDe]);
 
   const visibles = useMemo(
     () => (filtroTipo === "todos" ? objetivos : objetivos.filter((o) => o.tipo === filtroTipo)),
     [objetivos, filtroTipo]
   );
 
-  const stats = useMemo(() => {
-    let logrados = 0, fallidos = 0, enCurso = 0;
-    visibles.forEach((o) => {
-      const e = estadoDe(o);
-      if (e === "logrado") logrados++;
-      else if (e === "fallido") fallidos++;
-      else enCurso++;
-    });
-    return { logrados, fallidos, enCurso };
-  }, [visibles, estadoDe]);
+  const stats = useMemo(() => recuentoEstados(visibles.map(estadoDe)), [visibles, estadoDe]);
 
   return (
     <>
@@ -357,9 +294,10 @@ function SeccionObjetivos() {
           </div>
         ) : (
           visibles.map((o) => {
-            const tieneMeta = o.meta_valor != null;
-            const actual = tieneMeta ? pnlEnRango(o.fecha_inicio, o.fecha_fin) : null;
-            const pct = tieneMeta && o.meta_valor > 0 ? Math.max(0, Math.min(100, Math.round((actual / o.meta_valor) * 100))) : null;
+            const conMeta = tieneMeta(o);
+            const limite = esLimitePerdida(o);
+            const actual = conMeta ? pnlDe(o) : null;
+            const pct = progresoObjetivo(o, actual);
             const estado = estadoDe(o);
             return (
               <div key={o.id} className="obj-goal-card">
@@ -373,7 +311,7 @@ function SeccionObjetivos() {
                     </div>
                   </div>
                   <div className="obj-goal-actions">
-                    {!tieneMeta && (
+                    {!conMeta && (
                       <div className="obj-estado-group">
                         <button
                           className={`obj-estado-btn logrado ${estado === "logrado" ? "active" : ""}`}
@@ -396,13 +334,23 @@ function SeccionObjetivos() {
                   </div>
                 </div>
 
-                {tieneMeta ? (
+                {conMeta ? (
                   <>
-                    <div className="obj-progress-bar">
-                      <div className="obj-progress-fill" style={{ width: `${pct}%`, background: estado === "logrado" ? "var(--win)" : estado === "fallido" ? "var(--loss)" : "var(--accent)" }} />
-                    </div>
+                    {pct !== null && (
+                      <div className="obj-progress-bar">
+                        <div className="obj-progress-fill" style={{ width: `${pct}%`, background: estado === "logrado" ? "var(--win)" : estado === "fallido" ? "var(--loss)" : "var(--accent)" }} />
+                      </div>
+                    )}
                     <div className="obj-goal-sub obj-mono" style={{ color: estado === "logrado" ? "var(--win)" : estado === "fallido" ? "var(--loss)" : "var(--text-dim)" }}>
-                      <span className="importe">{fmtMoney(actual)}</span> de <span className="importe">{fmtMoney(o.meta_valor)}</span> ({pct}%)
+                      {limite ? (
+                        <>
+                          <span className="importe">{fmtMoney(actual)}</span> · límite <span className="importe">{fmtMoney(o.meta_valor)}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="importe">{fmtMoney(actual)}</span> de <span className="importe">{fmtMoney(o.meta_valor)}</span> ({pct}%)
+                        </>
+                      )}
                       {estado === "logrado" && " — ¡objetivo cumplido!"}
                       {estado === "fallido" && " — objetivo fallido"}
                     </div>
@@ -449,7 +397,7 @@ function SeccionObjetivos() {
               </div>
             </div>
             <div className="obj-field">
-              <label>Meta en $ (opcional — se compara automáticamente con tu P&amp;L real de ese periodo)</label>
+              <label>Meta en $ (opcional — se compara automáticamente con tu P&amp;L real de ese periodo; con 0 o un número negativo, por ejemplo −500, es un límite: no perder más de esa cantidad)</label>
               <input type="number" step="0.01" value={fMeta} onChange={(e) => setFMeta(e.target.value)} placeholder="Déjalo vacío si no es un objetivo de trading" />
             </div>
             <div className="obj-field">

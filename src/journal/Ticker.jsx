@@ -1,5 +1,6 @@
 // Cinta de arriba con las últimas operaciones.
 import React from "react";
+import { tonoResultado } from "../utils/journal";
 import { fmtMoney } from "./formato";
 
 export default function Ticker({ tickerTrades }) {
@@ -8,7 +9,7 @@ export default function Ticker({ tickerTrades }) {
       {tickerTrades.length > 0 ? (
         <div className="jt-ticker-track">
           {[...tickerTrades, ...tickerTrades].map((t, i) => (
-            <span key={i} className={`jt-pill ${Number(t.resultado) >= 0 ? "win" : "loss"}`}>
+            <span key={i} className={`jt-pill ${tonoResultado(t.resultado)}`}>
               {t.instrumento} &middot; <span className="importe">{fmtMoney(t.resultado)}</span>
             </span>
           ))}
