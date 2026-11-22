@@ -3,7 +3,7 @@ import { Plus, X, Trash2, Check, ChevronLeft, ChevronRight, Target, Pencil } fro
 import { supabase, conReintento } from "./supabaseClient";
 import { enmascarar } from "./utils/importes";
 import { hoyIso } from "./utils/periodo";
-import { rangoSugerido } from "./utils/objetivos";
+import { rangoSugerido, pnlEnRango, estadoObjetivo, progresoObjetivo, recuentoEstados, tieneMeta, esLimitePerdida } from "./utils/objetivos";
 
 // Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
 function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
@@ -251,46 +251,17 @@ function SeccionObjetivos() {
     cargar();
   }
 
-  const pnlEnRango = useCallback(
-    (inicio, fin) => trades.filter((t) => t.fecha >= inicio && t.fecha <= fin).reduce((s, t) => s + (Number(t.resultado) || 0), 0),
-    [trades]
-  );
+  const pnlDe = useCallback((o) => pnlEnRango(trades, o.fecha_inicio, o.fecha_fin), [trades]);
 
-  // Estado efectivo de un objetivo, ya sea de meta en $ (se calcula solo) o
-  // personal (se marca a mano): "logrado" | "fallido" | "en_curso"
-  const estadoDe = useCallback(
-    (o) => {
-      const tieneMeta = o.meta_valor != null;
-      if (tieneMeta) {
-        const actual = pnlEnRango(o.fecha_inicio, o.fecha_fin);
-        const cumplido = o.meta_valor > 0 ? actual >= o.meta_valor : actual >= 0;
-        if (cumplido) return "logrado";
-        if (o.fecha_fin < hoyIso()) return "fallido";
-        return "en_curso";
-      }
-      const estado = o.estado || "pendiente";
-      if (estado === "logrado") return "logrado";
-      if (estado === "fallido") return "fallido";
-      return "en_curso";
-    },
-    [pnlEnRango]
-  );
+  // Estado efectivo de un objetivo: "logrado" | "fallido" | "en_curso" (ver src/utils/objetivos.js).
+  const estadoDe = useCallback((o) => estadoObjetivo(o, pnlDe(o), hoyIso()), [pnlDe]);
 
   const visibles = useMemo(
     () => (filtroTipo === "todos" ? objetivos : objetivos.filter((o) => o.tipo === filtroTipo)),
     [objetivos, filtroTipo]
   );
 
-  const stats = useMemo(() => {
-    let logrados = 0, fallidos = 0, enCurso = 0;
-    visibles.forEach((o) => {
-      const e = estadoDe(o);
-      if (e === "logrado") logrados++;
-      else if (e === "fallido") fallidos++;
-      else enCurso++;
-    });
-    return { logrados, fallidos, enCurso };
-  }, [visibles, estadoDe]);
+  const stats = useMemo(() => recuentoEstados(visibles.map(estadoDe)), [visibles, estadoDe]);
 
   return (
     <>
@@ -323,9 +294,10 @@ function SeccionObjetivos() {
           </div>
         ) : (
           visibles.map((o) => {
-            const tieneMeta = o.meta_valor != null;
-            const actual = tieneMeta ? pnlEnRango(o.fecha_inicio, o.fecha_fin) : null;
-            const pct = tieneMeta && o.meta_valor > 0 ? Math.max(0, Math.min(100, Math.round((actual / o.meta_valor) * 100))) : null;
+            const conMeta = tieneMeta(o);
+            const limite = esLimitePerdida(o);
+            const actual = conMeta ? pnlDe(o) : null;
+            const pct = progresoObjetivo(o, actual);
             const estado = estadoDe(o);
             return (
               <div key={o.id} className="obj-goal-card">
@@ -339,7 +311,7 @@ function SeccionObjetivos() {
                     </div>
                   </div>
                   <div className="obj-goal-actions">
-                    {!tieneMeta && (
+                    {!conMeta && (
                       <div className="obj-estado-group">
                         <button
                           className={`obj-estado-btn logrado ${estado === "logrado" ? "active" : ""}`}
@@ -362,13 +334,23 @@ function SeccionObjetivos() {
                   </div>
                 </div>
 
-                {tieneMeta ? (
+                {conMeta ? (
                   <>
-                    <div className="obj-progress-bar">
-                      <div className="obj-progress-fill" style={{ width: `${pct}%`, background: estado === "logrado" ? "var(--win)" : estado === "fallido" ? "var(--loss)" : "var(--accent)" }} />
-                    </div>
+                    {pct !== null && (
+                      <div className="obj-progress-bar">
+                        <div className="obj-progress-fill" style={{ width: `${pct}%`, background: estado === "logrado" ? "var(--win)" : estado === "fallido" ? "var(--loss)" : "var(--accent)" }} />
+                      </div>
+                    )}
                     <div className="obj-goal-sub obj-mono" style={{ color: estado === "logrado" ? "var(--win)" : estado === "fallido" ? "var(--loss)" : "var(--text-dim)" }}>
-                      <span className="importe">{fmtMoney(actual)}</span> de <span className="importe">{fmtMoney(o.meta_valor)}</span> ({pct}%)
+                      {limite ? (
+                        <>
+                          <span className="importe">{fmtMoney(actual)}</span> · límite <span className="importe">{fmtMoney(o.meta_valor)}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="importe">{fmtMoney(actual)}</span> de <span className="importe">{fmtMoney(o.meta_valor)}</span> ({pct}%)
+                        </>
+                      )}
                       {estado === "logrado" && " — ¡objetivo cumplido!"}
                       {estado === "fallido" && " — objetivo fallido"}
                     </div>
@@ -415,7 +397,7 @@ function SeccionObjetivos() {
               </div>
             </div>
             <div className="obj-field">
-              <label>Meta en $ (opcional — se compara automáticamente con tu P&amp;L real de ese periodo)</label>
+              <label>Meta en $ (opcional — se compara automáticamente con tu P&amp;L real de ese periodo; con 0 o un número negativo, por ejemplo −500, es un límite: no perder más de esa cantidad)</label>
               <input type="number" step="0.01" value={fMeta} onChange={(e) => setFMeta(e.target.value)} placeholder="Déjalo vacío si no es un objetivo de trading" />
             </div>
             <div className="obj-field">

@@ -7,12 +7,6 @@ antes a funciones puras (por ejemplo en `src/utils/`), sin cambiar nada de lo qu
 
 Al arreglar cada fallo se quita de esta lista y su test pasa a comprobar lo correcto.
 
-### Objetivos
-- [ ] **Meta en $ de 0 o negativa: no mostrar «(%)» vacío.** En `src/Objetivos.jsx`, si
-  `meta_valor <= 0` el % es `null`: la tarjeta muestra «(%)» y la barra se queda sin ancho. Además, con
-  meta negativa solo se da por cumplido si el P&L es ≥ 0. Decidir qué significa una meta negativa
-  («no perder más de X») y probarlo.
-
 ### Mejor / peor operación
 - [ ] **Sin resultados numéricos, mostrar «—».** `calcularAnalisis` (`src/utils/journal.js`) se
   queda con la primera operación como mejor y peor cuando ningún resultado es un número, y el panel
@@ -37,7 +31,4 @@ Al arreglar cada fallo se quita de esta lista y su test pasa a comprobar lo corr
 - `datosEmpresaActiva`: neto del periodo y neto histórico de una firma.
 - `tablaPeriodos`: filas por trimestre o mes con ingresos, gastos, neto y acumulado; marca «en curso» y futuros.
 
-### `src/Objetivos.jsx`
-(`rangoSugerido` ya está en `src/utils/objetivos.js` con sus tests en `tests/objetivos.test.js`.)
-- `pnlEnRango` y `estadoDe`: logrado / fallido / en curso según la meta en $ o el estado manual.
-- % de progreso de la barra y el recuento de logrados, fallidos y en curso.
+(Los de Objetivos ya están en `src/utils/objetivos.js` con sus tests en `tests/objetivos.test.js`.)
