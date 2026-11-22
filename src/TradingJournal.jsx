@@ -33,6 +33,32 @@ import ImportarOperaciones from "./ImportarOperaciones";
 import { rutaDeCaptura, useUrlCaptura } from "./capturasUrls";
 import { comprimirCaptura, extensionDeBlob, ImagenIlegibleError } from "./comprimirCaptura";
 import { DIAS_SEMANA, celdasMes } from "./utils/calendario";
+import {
+  parseLotes,
+  errorLotes,
+  fmtLotes,
+  fmtDuration,
+  duracionSegundos,
+  todayIsoLocal,
+  cuentasDeOperaciones,
+  estrategiasDeOperaciones,
+  filtrarPorCuenta,
+  filtrarPorDias,
+  totalesPorDia,
+  totalDelMes,
+  diasSobreRiesgo,
+  ordenCronologico,
+  curvaCapital,
+  calcularStats,
+  calcularAnalisis,
+  ordenarTabla,
+  ultimasParaTicker,
+  csvDeOperaciones,
+  alternarCuenta,
+  valorDeCuenta,
+  errorDeContratos,
+  puedeGuardarOperacion,
+} from "./utils/journal";
 import { enmascarar } from "./utils/importes";
 
 // Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
@@ -46,27 +72,6 @@ function fmtMoneyBase(n) {
   return `${sign}${Math.abs(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
 }
 
-// Contratos/lotaje: admite coma o punto como separador decimal y hasta 2 decimales.
-function parseLotes(v) {
-  const s = String(v ?? "").trim().replace(",", ".");
-  if (!/^(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(s)) return null;
-  const n = Number(s);
-  return n > 0 ? n : null;
-}
-
-function errorLotes(v) {
-  const s = String(v ?? "").trim().replace(",", ".");
-  if (s === "") return "Indica los contratos/lotaje.";
-  if (!/^-?(\d+(\.\d*)?|\.\d+)$/.test(s)) return "Debe ser un número (ej. 4 o 4,5).";
-  if (/\.\d{3,}$/.test(s)) return "Máximo 2 decimales.";
-  if (!(Number(s) > 0)) return "Debe ser mayor que 0.";
-  return null;
-}
-
-function fmtLotes(n) {
-  if (n === null || n === undefined || n === "" || isNaN(Number(n))) return "—";
-  return Number(n).toLocaleString("es-ES", { maximumFractionDigits: 2 });
-}
 
 function fmtDate(d) {
   if (!d) return "\u2014";
@@ -75,55 +80,6 @@ function fmtDate(d) {
   return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
-function fmtDuration(seconds) {
-  if (seconds == null || isNaN(seconds)) return "\u2014";
-  if (seconds < 60) return `${Math.round(seconds)} seg`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
-  return `${h}h ${m}min`;
-}
-
-// Convierte "HH:MM" o "HH:MM:SS" a segundos desde medianoche
-function horaASegundos(hora) {
-  if (!hora) return null;
-  const partes = hora.split(":").map(Number);
-  const [h = 0, m = 0, s = 0] = partes;
-  if (isNaN(h) || isNaN(m)) return null;
-  return h * 3600 + m * 60 + (s || 0);
-}
-
-// Duración de una operación en segundos, o null si no tiene horas registradas
-function duracionSegundos(t) {
-  const inicio = horaASegundos(t.hora_entrada);
-  const fin = horaASegundos(t.hora_salida);
-  if (inicio == null || fin == null) return null;
-  let diff = fin - inicio;
-  if (diff < 0) diff += 24 * 3600; // operación que cruza medianoche
-  return diff;
-}
-
-const DURATION_BUCKETS = [
-  { label: "< 1 min", max: 60 },
-  { label: "1-5 min", max: 300 },
-  { label: "5-10 min", max: 600 },
-  { label: "10-15 min", max: 900 },
-  { label: "15-20 min", max: 1200 },
-  { label: "20-30 min", max: 1800 },
-  { label: "> 30 min", max: Infinity },
-];
-
-function bucketLabel(seconds) {
-  for (const b of DURATION_BUCKETS) {
-    if (seconds <= b.max) return b.label;
-  }
-  return DURATION_BUCKETS[DURATION_BUCKETS.length - 1].label;
-}
-
-function todayIsoLocal() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 const emptyForm = {
   fecha: todayIsoLocal(),
@@ -243,10 +199,7 @@ export default function TradingJournal({ session }) {
     cargarTrades();
   }, [cargarTrades]);
 
-  const cuentas = useMemo(() => {
-    const set = new Set(trades.map((t) => t.cuenta).filter(Boolean));
-    return ["Todas", ...Array.from(set)];
-  }, [trades]);
+  const cuentas = useMemo(() => cuentasDeOperaciones(trades), [trades]);
 
   // Cuentas que ofrece el importador: las activas y las que ya tienen operaciones.
   const cuentasImportar = useMemo(
@@ -254,31 +207,13 @@ export default function TradingJournal({ session }) {
     [cuentasActivas, cuentas]
   );
 
-  const estrategiasUsadas = useMemo(() => {
-    const set = new Set(trades.map((t) => t.estrategia).filter(Boolean));
-    return Array.from(set);
-  }, [trades]);
+  const estrategiasUsadas = useMemo(() => estrategiasDeOperaciones(trades), [trades]);
 
-  const porCuenta = useMemo(() => {
-    if (filtroCuenta === "Todas") return trades;
-    return trades.filter((t) => t.cuenta === filtroCuenta);
-  }, [trades, filtroCuenta]);
+  const porCuenta = useMemo(() => filtrarPorCuenta(trades, filtroCuenta), [trades, filtroCuenta]);
 
-  const filtered = useMemo(() => {
-    if (selectedDays.length === 0) return porCuenta;
-    return porCuenta.filter((t) => selectedDays.includes(t.fecha));
-  }, [porCuenta, selectedDays]);
+  const filtered = useMemo(() => filtrarPorDias(porCuenta, selectedDays), [porCuenta, selectedDays]);
 
-  const dailyTotals = useMemo(() => {
-    const map = {};
-    porCuenta.forEach((t) => {
-      if (!t.fecha) return;
-      if (!map[t.fecha]) map[t.fecha] = { total: 0, count: 0 };
-      map[t.fecha].total += Number(t.resultado) || 0;
-      map[t.fecha].count += 1;
-    });
-    return map;
-  }, [porCuenta]);
+  const dailyTotals = useMemo(() => totalesPorDia(porCuenta), [porCuenta]);
 
   const calendarCells = useMemo(() => {
     const year = calDate.getFullYear();
@@ -286,192 +221,23 @@ export default function TradingJournal({ session }) {
     return celdasMes(year, month).map((c) => (c ? { ...c, data: dailyTotals[c.iso] || null } : null));
   }, [calDate, dailyTotals]);
 
-  const monthTotal = useMemo(() => {
-    const year = calDate.getFullYear();
-    const month = calDate.getMonth();
-    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return Object.entries(dailyTotals)
-      .filter(([iso]) => iso.startsWith(prefix))
-      .reduce((s, [, v]) => s + v.total, 0);
-  }, [dailyTotals, calDate]);
+  const monthTotal = useMemo(() => totalDelMes(dailyTotals, calDate.getFullYear(), calDate.getMonth()), [dailyTotals, calDate]);
 
-  const diasSobreRiesgoMes = useMemo(() => {
-    if (!riesgoMaximo) return 0;
-    const year = calDate.getFullYear();
-    const month = calDate.getMonth();
-    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return Object.entries(dailyTotals).filter(([iso, v]) => iso.startsWith(prefix) && v.total < -riesgoMaximo).length;
-  }, [dailyTotals, calDate, riesgoMaximo]);
+  const diasSobreRiesgoMes = useMemo(() => diasSobreRiesgo(dailyTotals, calDate.getFullYear(), calDate.getMonth(), riesgoMaximo), [dailyTotals, calDate, riesgoMaximo]);
 
   const todayIso = todayIsoLocal();
 
-  const chronological = useMemo(() => {
-    return [...filtered].sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
-  }, [filtered]);
+  const chronological = useMemo(() => ordenCronologico(filtered), [filtered]);
 
-  const equityData = useMemo(() => {
-    let acc = 0;
-    return chronological.map((t, i) => {
-      acc += Number(t.resultado) || 0;
-      return { idx: i + 1, fecha: t.fecha, capital: Number(acc.toFixed(2)) };
-    });
-  }, [chronological]);
+  const equityData = useMemo(() => curvaCapital(chronological), [chronological]);
 
-  const stats = useMemo(() => {
-    const n = filtered.length;
-    const wins = filtered.filter((t) => Number(t.resultado) > 0);
-    const losses = filtered.filter((t) => Number(t.resultado) < 0);
-    const totalPnl = filtered.reduce((s, t) => s + (Number(t.resultado) || 0), 0);
-    const grossWin = wins.reduce((s, t) => s + Number(t.resultado), 0);
-    const grossLoss = Math.abs(losses.reduce((s, t) => s + Number(t.resultado), 0));
-    const winRate = n ? (wins.length / n) * 100 : 0;
-    const profitFactor = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? Infinity : 0;
-    const avgWin = wins.length ? grossWin / wins.length : 0;
-    const avgLoss = losses.length ? grossLoss / losses.length : 0;
-    let streak = 0;
-    let streakType = null;
-    for (let i = chronological.length - 1; i >= 0; i--) {
-      const r = Number(chronological[i].resultado);
-      const type = r > 0 ? "win" : r < 0 ? "loss" : null;
-      if (type === null) break;
-      if (streakType === null) {
-        streakType = type;
-        streak = 1;
-      } else if (type === streakType) {
-        streak++;
-      } else break;
-    }
-    return { n, totalPnl, winRate, profitFactor, avgWin, avgLoss, streak, streakType };
-  }, [filtered, chronological]);
+  const stats = useMemo(() => calcularStats(filtered, chronological), [filtered, chronological]);
 
-  const analisis = useMemo(() => {
-    const n = filtered.length;
-    if (n === 0) {
-      return {
-        n: 0,
-        totalLots: 0,
-        activeDays: 0,
-        avgTradesPerDay: 0,
-        mostActiveDay: null,
-        mostProfitableDay: null,
-        leastProfitableDay: null,
-        avgDuration: null,
-        avgWinDuration: null,
-        avgLossDuration: null,
-        directionPct: { largo: 0, corto: 0 },
-        bestTrade: null,
-        worstTrade: null,
-        durationBuckets: [],
-      };
-    }
+  const analisis = useMemo(() => calcularAnalisis(filtered), [filtered]);
 
-    const totalLots = filtered.reduce((s, t) => s + (Number(t.contratos) || 0), 0);
+  const sorted = useMemo(() => ordenarTabla(filtered, sortKey, sortDir), [filtered, sortKey, sortDir]);
 
-    // Agrupar por día de la semana
-    const porDiaSemana = DIAS_SEMANA.map((label) => ({ label, count: 0, total: 0 }));
-    filtered.forEach((t) => {
-      if (!t.fecha) return;
-      const dt = new Date(t.fecha + "T00:00:00");
-      if (isNaN(dt)) return;
-      const idx = (dt.getDay() + 6) % 7; // 0 = lunes
-      porDiaSemana[idx].count += 1;
-      porDiaSemana[idx].total += Number(t.resultado) || 0;
-    });
-    const diasConDatos = porDiaSemana.filter((d) => d.count > 0);
-    const mostActiveDay = diasConDatos.length
-      ? diasConDatos.reduce((a, b) => (b.count > a.count ? b : a))
-      : null;
-    const mostProfitableDay = diasConDatos.length
-      ? diasConDatos.reduce((a, b) => (b.total > a.total ? b : a))
-      : null;
-    const leastProfitableDay = diasConDatos.length
-      ? diasConDatos.reduce((a, b) => (b.total < a.total ? b : a))
-      : null;
-
-    const activeDays = new Set(filtered.map((t) => t.fecha)).size;
-    const avgTradesPerDay = activeDays ? n / activeDays : 0;
-
-    // Duración
-    const conDuracion = filtered
-      .map((t) => ({ t, dur: duracionSegundos(t) }))
-      .filter((x) => x.dur !== null);
-    const avgDuration = conDuracion.length
-      ? conDuracion.reduce((s, x) => s + x.dur, 0) / conDuracion.length
-      : null;
-    const winsConDuracion = conDuracion.filter((x) => Number(x.t.resultado) > 0);
-    const lossesConDuracion = conDuracion.filter((x) => Number(x.t.resultado) < 0);
-    const avgWinDuration = winsConDuracion.length
-      ? winsConDuracion.reduce((s, x) => s + x.dur, 0) / winsConDuracion.length
-      : null;
-    const avgLossDuration = lossesConDuracion.length
-      ? lossesConDuracion.reduce((s, x) => s + x.dur, 0) / lossesConDuracion.length
-      : null;
-
-    // Buckets de duración: cantidad de operaciones y win rate por rango
-    const bucketsMap = {};
-    DURATION_BUCKETS.forEach((b) => (bucketsMap[b.label] = { label: b.label, count: 0, wins: 0 }));
-    conDuracion.forEach((x) => {
-      const label = bucketLabel(x.dur);
-      bucketsMap[label].count += 1;
-      if (Number(x.t.resultado) > 0) bucketsMap[label].wins += 1;
-    });
-    const durationBuckets = DURATION_BUCKETS.map((b) => {
-      const entry = bucketsMap[b.label];
-      return {
-        label: b.label,
-        count: entry.count,
-        winRate: entry.count ? Math.round((entry.wins / entry.count) * 1000) / 10 : 0,
-      };
-    });
-
-    // Dirección
-    const largos = filtered.filter((t) => t.direccion === "Largo").length;
-    const cortos = filtered.filter((t) => t.direccion === "Corto").length;
-
-    // Mejor / peor operación
-    const bestTrade = filtered.reduce((a, b) => (Number(b.resultado) > Number(a.resultado) ? b : a));
-    const worstTrade = filtered.reduce((a, b) => (Number(b.resultado) < Number(a.resultado) ? b : a));
-
-    return {
-      n,
-      totalLots,
-      activeDays,
-      avgTradesPerDay,
-      mostActiveDay,
-      mostProfitableDay,
-      leastProfitableDay,
-      avgDuration,
-      avgWinDuration,
-      avgLossDuration,
-      directionPct: {
-        largo: n ? Math.round((largos / n) * 1000) / 10 : 0,
-        corto: n ? Math.round((cortos / n) * 1000) / 10 : 0,
-      },
-      bestTrade,
-      worstTrade,
-      durationBuckets,
-    };
-  }, [filtered]);
-
-  const sorted = useMemo(() => {
-    const arr = [...filtered];
-    arr.sort((a, b) => {
-      let av = a[sortKey];
-      let bv = b[sortKey];
-      if (sortKey === "resultado" || sortKey === "contratos") {
-        av = Number(av) || 0;
-        bv = Number(bv) || 0;
-      }
-      if (av < bv) return sortDir === "asc" ? -1 : 1;
-      if (av > bv) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-    return arr;
-  }, [filtered, sortKey, sortDir]);
-
-  const tickerTrades = useMemo(() => {
-    return [...chronological].slice(-14).reverse();
-  }, [chronological]);
+  const tickerTrades = useMemo(() => ultimasParaTicker(chronological), [chronological]);
 
   function cambiarMes(delta) {
     setCalDate((d) => new Date(d.getFullYear(), d.getMonth() + delta, 1));
@@ -569,9 +335,7 @@ export default function TradingJournal({ session }) {
   const todasSel = cuentasActivas.length > 0 && cuentasActivas.every((c) => cuentasSel.includes(c));
 
   function toggleCuenta(c) {
-    setCuentasSel((sel) =>
-      sel.includes(c) ? sel.filter((x) => x !== c) : cuentasActivas.filter((x) => x === c || sel.includes(x))
-    );
+    setCuentasSel((sel) => alternarCuenta(sel, c, cuentasActivas));
   }
 
   function toggleTodas() {
@@ -579,8 +343,7 @@ export default function TradingJournal({ session }) {
   }
 
   function valorCuenta(c, campo) {
-    const ajuste = cuentasSel.length > 1 ? ajustes[c]?.[campo] : undefined;
-    return ajuste !== undefined ? ajuste : form[campo];
+    return valorDeCuenta(form, ajustes, cuentasSel.length, c, campo);
   }
 
   function ajustarCuenta(c, campo, valor) {
@@ -592,25 +355,17 @@ export default function TradingJournal({ session }) {
   }
 
   // Primer valor de contratos/lotaje no válido entre los que se van a guardar.
-  const errorContratos = (() => {
-    if (modoMultiCuenta && cuentasSel.length > 1) {
-      for (const c of cuentasSel) {
-        const motivo = errorLotes(valorCuenta(c, "contratos"));
-        if (motivo) return `Contratos/Lotaje en ${c}: ${motivo}`;
-      }
-      return null;
-    }
-    const motivo = errorLotes(form.contratos);
-    return motivo ? `Contratos/Lotaje: ${motivo}` : null;
-  })();
+  const errorContratos = errorDeContratos(
+    form.contratos,
+    modoMultiCuenta && cuentasSel.length > 1 ? cuentasSel.map((c) => ({ cuenta: c, contratos: valorCuenta(c, "contratos") })) : null
+  );
 
-  const puedeGuardar =
-    !!form.fecha &&
-    !subiendoCaptura &&
-    !errorContratos &&
-    (modoMultiCuenta
-      ? cuentasSel.length > 0 && cuentasSel.every((c) => valorCuenta(c, "resultado") !== "")
-      : form.resultado !== "");
+  const puedeGuardar = puedeGuardarOperacion({
+    fecha: form.fecha,
+    subiendoCaptura,
+    errorContratos,
+    resultados: modoMultiCuenta ? cuentasSel.map((c) => valorCuenta(c, "resultado")) : [form.resultado],
+  });
 
   function mostrarFallo(error, enFormulario) {
     console.error(error);
@@ -720,12 +475,7 @@ export default function TradingJournal({ session }) {
   }
 
   function exportarCSV() {
-    const cols = ["fecha", "cuenta", "instrumento", "direccion", "contratos", "puntos", "resultado", "estrategia", "notas", "enlace"];
-    const cabeceras = cols.map((c) => (c === "contratos" ? "contratos/lotaje" : c));
-    const rows = [cabeceras.join(",")].concat(
-      sorted.map((t) => cols.map((c) => `"${String(t[c] ?? "").replace(/"/g, '""')}"`).join(","))
-    );
-    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csvDeOperaciones(sorted)], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
