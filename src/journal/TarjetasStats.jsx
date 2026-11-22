@@ -1,5 +1,6 @@
 // Las cinco tarjetas de arriba: P&L, win rate, profit factor, operaciones y racha.
 import React from "react";
+import { tonoResultado } from "../utils/journal";
 import { fmtMoney } from "./formato";
 
 export default function TarjetasStats({ stats }) {
@@ -7,7 +8,7 @@ export default function TarjetasStats({ stats }) {
     <div className="jt-stats">
       <div className="jt-stat-card">
         <div className="jt-stat-label">P&amp;L total</div>
-        <div className={`jt-stat-value jt-mono ${stats.totalPnl >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
+        <div className={`jt-stat-value jt-mono jt-pnl-${tonoResultado(stats.totalPnl)}`}>
           <span className="importe">{fmtMoney(stats.totalPnl)}</span>
         </div>
       </div>
