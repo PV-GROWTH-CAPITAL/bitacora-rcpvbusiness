@@ -28,6 +28,7 @@ import {
   errorDeContratos,
   puedeGuardarOperacion,
   formInicial,
+  tonoResultado,
 } from "../src/utils/journal.js";
 import { hoyIso } from "../src/utils/periodo.js";
 
@@ -393,5 +394,12 @@ describe("formulario: valores al abrir", () => {
     const f = formInicial({ id: 7, fecha: "2026-10-01", contratos: 1.5, resultado: 20 }, "Todas", "2026-11-23");
     expect(f).toMatchObject({ fecha: "2026-10-01", contratos: "1,5", resultado: 20, instrumento: "MNQ" });
     expect(formInicial({ id: 8, fecha: "2026-10-01", contratos: null }, "Todas", "2026-11-23").contratos).toBe("1");
+  });
+});
+
+describe("color de un resultado", () => {
+  it("ganadora, perdedora y plana (0 $, vacío o no numérico)", () => {
+    expect([10, "2.5", -10, "-0.01"].map(tonoResultado)).toEqual(["win", "win", "loss", "loss"]);
+    expect([0, "0", -0, "", null, undefined, "abc"].map(tonoResultado)).toEqual(["flat", "flat", "flat", "flat", "flat", "flat", "flat"]);
   });
 });

@@ -15,6 +15,7 @@ export const ESTILOS_JOURNAL = `
           --win-dim: #1D5C46;
           --loss: #B14B3F;
           --loss-dim: #5C2A22;
+          --flat: #5686BD; /* operación o día de 0 $: el azul del calendario */
           font-family: 'IBM Plex Sans', sans-serif;
           background-color: var(--bg);
           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
@@ -63,6 +64,7 @@ export const ESTILOS_JOURNAL = `
         }
         .jt-pill.win { color: #4CBB93; border-color: rgba(47,150,112,0.35); }
         .jt-pill.loss { color: #D97563; border-color: rgba(177,75,63,0.35); }
+        .jt-pill.flat { color: var(--flat); border-color: rgba(86,134,189,0.35); }
 
         .jt-header {
           max-width: 1100px;
@@ -340,6 +342,7 @@ export const ESTILOS_JOURNAL = `
         .jt-captura-thumb:hover { opacity: 0.85; }
         .jt-pnl-win { color: var(--win); }
         .jt-pnl-loss { color: var(--loss); }
+        .jt-pnl-flat { color: var(--flat); }
 
         .jt-cal-head {
           display: flex; align-items: center; justify-content: space-between;

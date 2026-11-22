@@ -90,6 +90,14 @@ export function filtrarPorDias(trades, dias) {
   return trades.filter((t) => dias.includes(t.fecha));
 }
 
+// Color de un resultado en $: "win" (> 0), "loss" (< 0) o "flat" (0, vacío o no numérico).
+// Lo comparten la cinta, la tabla y el calendario, para que una de 0 $ se vea igual en todas partes.
+export function tonoResultado(r) {
+  const n = Number(r);
+  if (r === null || r === "" || !Number.isFinite(n) || n === 0) return "flat";
+  return n > 0 ? "win" : "loss";
+}
+
 // P&L y nº de operaciones por día: { "YYYY-MM-DD": { total, count } }.
 export function totalesPorDia(trades) {
   const map = {};

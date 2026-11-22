@@ -4,6 +4,7 @@ import React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DIAS_SEMANA } from "../utils/calendario";
 import { hoyIso } from "../utils/periodo";
+import { tonoResultado } from "../utils/journal";
 import { enmascarar } from "../utils/importes";
 import { fmtMoney } from "./formato";
 import { useJournal } from "./JournalContext";
@@ -36,7 +37,7 @@ export default function CalendarioJournal() {
               {diasSobreRiesgoMes > 0 ? `⚠ ${diasSobreRiesgoMes} día${diasSobreRiesgoMes > 1 ? "s" : ""} sobre riesgo` : "Dentro del riesgo"}
             </div>
           )}
-          <div className={`jt-cal-total jt-mono ${monthTotal >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
+          <div className={`jt-cal-total jt-mono jt-pnl-${tonoResultado(monthTotal)}`}>
             Total del mes: <span className="importe">{fmtMoney(monthTotal)}</span>
           </div>
         </div>
@@ -56,7 +57,7 @@ export default function CalendarioJournal() {
               key={cell.iso}
               role="button"
               tabIndex={0}
-              className={`jt-cal-cell ${cell.data ? (cell.data.total > 0 ? "cal-win" : cell.data.total < 0 ? "cal-loss" : "cal-flat") : ""} ${cell.iso === todayIso ? "today" : ""} ${selectedDays.includes(cell.iso) ? "selected" : ""} ${riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? "risk-exceeded" : ""}`}
+              className={`jt-cal-cell ${cell.data ? `cal-${tonoResultado(cell.data.total)}` : ""} ${cell.iso === todayIso ? "today" : ""} ${selectedDays.includes(cell.iso) ? "selected" : ""} ${riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? "risk-exceeded" : ""}`}
               onClick={() => seleccionarDia(cell.iso)}
               onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && seleccionarDia(cell.iso)}
               title={riesgoMaximo > 0 && cell.data && cell.data.total < -riesgoMaximo ? enmascarar(`Superaste tu riesgo máximo de ${riesgoMaximo} $/día`) : undefined}

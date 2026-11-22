@@ -7,11 +7,6 @@ antes a funciones puras (por ejemplo en `src/utils/`), sin cambiar nada de lo qu
 
 Al arreglar cada fallo se quita de esta lista y su test pasa a comprobar lo correcto.
 
-### Colores
-- [ ] **Una operación de 0 $ se ve «plana» en todas partes.** El calendario ya la pinta en azul
-  (`cal-flat`), pero el ticker (`src/journal/Ticker.jsx`, `>= 0` → `win`) y la tabla
-  (`src/journal/FilaOperacion.jsx`, `>= 0` → `jt-pnl-win`) la pintan en verde.
-
 ### Objetivos
 - [ ] **Meta en $ de 0 o negativa: no mostrar «(%)» vacío.** En `src/Objetivos.jsx`, si
   `meta_valor <= 0` el % es `null`: la tarjeta muestra «(%)» y la barra se queda sin ancho. Además, con
