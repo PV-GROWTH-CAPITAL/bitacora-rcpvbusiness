@@ -12,6 +12,8 @@ import {
   hoyIso, partesIso, trimestreDe, rangoDeFiltro, etiquetaFiltro, aniosDisponibles,
 } from "./utils/periodo";
 import { enmascarar } from "./utils/importes";
+import { useHoy } from "./utils/useHoy";
+import { compraVacia, retiroVacio, inversionVacia } from "./utils/contabilidad";
 
 // Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
 function fmtMoney(...a) { return enmascarar(fmtMoneyBase(...a)); }
@@ -33,14 +35,6 @@ function fmtDate(d) {
   return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
-function todayIsoLocal() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-const emptyCompra = { fecha: todayIsoLocal(), cuenta: "", proveedor: "", costo: "", notas: "" };
-const emptyRetiro = { fecha: todayIsoLocal(), cuenta: "", proveedor: "", monto: "", notas: "" };
-const emptyInv = { fecha: todayIsoLocal(), concepto: "", monto: "", notas: "" };
 
 // empresas: nombres de las firmas del usuario (tabla empresas_usuario), en su orden. Llegan de AppShell.
 // filtro / onFiltroCambio: filtro global de periodo y empresa (estado de AppShell, barra FiltroPeriodo).
@@ -54,7 +48,7 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
   
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
-  const hoyDia = useMemo(() => hoyIso(), []); // hoy en Madrid, "YYYY-MM-DD"
+  const hoyDia = useHoy(); // hoy en Madrid, "YYYY-MM-DD"; cambia solo a medianoche
   const hoy = useMemo(() => partesIso(hoyDia), [hoyDia]);
   const modoPeriodo = filtro.modo;
   const anioFiltro = filtro.anio;
@@ -64,15 +58,15 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
   // Estados Modales
   const [showCompraForm, setShowCompraForm] = useState(false);
   const [editingCompraId, setEditingCompraId] = useState(null);
-  const [compraForm, setCompraForm] = useState(emptyCompra);
+  const [compraForm, setCompraForm] = useState(() => compraVacia(hoyIso()));
 
   const [showRetiroForm, setShowRetiroForm] = useState(false);
   const [editingRetiroId, setEditingRetiroId] = useState(null);
-  const [retiroForm, setRetiroForm] = useState(emptyRetiro);
+  const [retiroForm, setRetiroForm] = useState(() => retiroVacio(hoyIso()));
 
   const [showInvForm, setShowInvForm] = useState(false);
   const [editingInvId, setEditingInvId] = useState(null);
-  const [invForm, setInvForm] = useState(emptyInv);
+  const [invForm, setInvForm] = useState(() => inversionVacia(hoyIso()));
 
   const cargar = useCallback(async () => {
     setError(false);
@@ -280,11 +274,11 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
 
   // --- CRUD HANDLERS ---
   function abrirNuevaCompra(empresaDefault = "") { 
-    setCompraForm({ ...emptyCompra, proveedor: empresaDefault || (activeTab !== "GENERAL" ? activeTab : "") }); 
+    setCompraForm({ ...compraVacia(hoyIso()), proveedor: empresaDefault || (activeTab !== "GENERAL" ? activeTab : "") }); 
     setEditingCompraId(null); 
     setShowCompraForm(true); 
   }
-  function abrirEditarCompra(c) { setCompraForm({ ...emptyCompra, ...c }); setEditingCompraId(c.id); setShowCompraForm(true); }
+  function abrirEditarCompra(c) { setCompraForm({ ...compraVacia(hoyIso()), ...c }); setEditingCompraId(c.id); setShowCompraForm(true); }
   async function guardarCompra() {
     if (!compraForm.fecha || compraForm.costo === "") return;
     const registro = { 
@@ -306,11 +300,11 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
   }
 
   function abrirNuevoRetiro(empresaDefault = "") { 
-    setRetiroForm({ ...emptyRetiro, proveedor: empresaDefault || (activeTab !== "GENERAL" ? activeTab : "") }); 
+    setRetiroForm({ ...retiroVacio(hoyIso()), proveedor: empresaDefault || (activeTab !== "GENERAL" ? activeTab : "") }); 
     setEditingRetiroId(null); 
     setShowRetiroForm(true); 
   }
-  function abrirEditarRetiro(r) { setRetiroForm({ ...emptyRetiro, ...r }); setEditingRetiroId(r.id); setShowRetiroForm(true); }
+  function abrirEditarRetiro(r) { setRetiroForm({ ...retiroVacio(hoyIso()), ...r }); setEditingRetiroId(r.id); setShowRetiroForm(true); }
   async function guardarRetiro() {
     if (!retiroForm.fecha || retiroForm.monto === "") return;
     const registro = { 
@@ -331,8 +325,8 @@ export default function Contabilidad({ session, empresas = [], filtro, onFiltroC
     await cargar();
   }
 
-  function abrirNuevaInv() { setInvForm(emptyInv); setEditingInvId(null); setShowInvForm(true); }
-  function abrirEditarInv(i) { setInvForm({ ...emptyInv, ...i }); setEditingInvId(i.id); setShowInvForm(true); }
+  function abrirNuevaInv() { setInvForm(inversionVacia(hoyIso())); setEditingInvId(null); setShowInvForm(true); }
+  function abrirEditarInv(i) { setInvForm({ ...inversionVacia(hoyIso()), ...i }); setEditingInvId(i.id); setShowInvForm(true); }
   async function guardarInv() {
     if (!invForm.fecha || invForm.monto === "") return;
     const registro = { fecha: invForm.fecha, concepto: invForm.concepto, monto: Number(invForm.monto), notas: invForm.notas };

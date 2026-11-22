@@ -18,11 +18,6 @@ export function fmtFechaLarga(iso) {
   return `${DIAS[dt.getDay()]}, ${dt.getDate()} De ${MESES[dt.getMonth()]} De ${dt.getFullYear()}`;
 }
 
-export function todayIsoLocal() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 // "Requisito que más falla" agrupa por texto (sin mayúsculas ni espacios de
 // sobra), no por id: London y New York tienen ids distintos para el mismo
 // requisito, y así un "¿Hay TPs claros?" que falla en ambas sesiones suma junto.

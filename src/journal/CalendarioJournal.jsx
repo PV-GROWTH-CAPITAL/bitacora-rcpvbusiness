@@ -3,7 +3,7 @@
 import React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DIAS_SEMANA } from "../utils/calendario";
-import { hoyIso } from "../utils/periodo";
+import { useHoy } from "../utils/useHoy";
 import { tonoResultado } from "../utils/journal";
 import { enmascarar } from "../utils/importes";
 import { fmtMoney } from "./formato";
@@ -13,7 +13,7 @@ export default function CalendarioJournal() {
   const { state, actions } = useJournal();
   const { calDate, riesgoMaximo, diasSobreRiesgoMes, monthTotal, calendarCells, selectedDays } = state;
   const { cambiarMes, irAHoy, seleccionarDia } = actions;
-  const todayIso = hoyIso();
+  const todayIso = useHoy();
 
   return (
     <div className="jt-panel">

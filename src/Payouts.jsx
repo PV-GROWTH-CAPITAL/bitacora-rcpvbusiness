@@ -6,6 +6,7 @@ import { resumenPayouts, curvaCobrado, repartoPorEmpresa, enRango, empresaDeReti
 import { TODAS_EMPRESAS, hoyIso, rangoDeFiltro, etiquetaFiltro, aniosDisponibles } from "./utils/periodo";
 import FiltroPeriodo from "./FiltroPeriodo";
 import { enmascarar } from "./utils/importes";
+import { useHoy } from "./utils/useHoy";
 
 // Formateadores de dinero que respetan el modo «ocultar importes» (definidos abajo como *Base).
 function fmtEur(...a) { return enmascarar(fmtEurBase(...a)); }
@@ -39,11 +40,6 @@ function fmtDateCorta(d) {
 
 const fmtEurEjeBase = (v) => `${Number(v).toLocaleString("es-ES", { maximumFractionDigits: 0 })} €`;
 const fmtPct = (n) => `${n.toLocaleString("es-ES", { maximumFractionDigits: 1 })} %`;
-
-function todayIsoLocal() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function fmtKb(bytes) {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
@@ -95,7 +91,7 @@ async function comprimirImagen(file) {
   return { blob, w, h };
 }
 
-const formVacio = () => ({ cuenta: "", empresa: "", importe: "", importeUsd: "", fecha: todayIsoLocal() });
+const formVacio = () => ({ cuenta: "", empresa: "", importe: "", importeUsd: "", fecha: hoyIso() });
 const OTRA = "__otra__"; // valor del desplegable para escribir una cuenta que no está en Cuentas activas
 
 // empresas (prop): nombres de las firmas del usuario (tabla empresas_usuario), en su orden. Llegan de AppShell.
@@ -199,7 +195,7 @@ export default function Payouts({ session, empresas: empresasUsuario = [], filtr
   }, [cuentas, filtroCuenta]);
 
   // Filtro global: periodo (rango de fechas, comparadas como texto) y empresa.
-  const hoyDia = useMemo(() => hoyIso(), []);
+  const hoyDia = useHoy();
   const rango = useMemo(() => rangoDeFiltro(filtro, hoyDia), [filtro, hoyDia]);
   const empresaFiltro = filtro.empresa === TODAS_EMPRESAS ? "" : normEmpresa(filtro.empresa);
   const anios = useMemo(() => aniosDisponibles(retiros.map((r) => r.fecha), filtro, hoyDia), [retiros, filtro, hoyDia]);

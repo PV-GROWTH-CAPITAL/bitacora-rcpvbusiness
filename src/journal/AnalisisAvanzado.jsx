@@ -1,8 +1,11 @@
 // Panel «Análisis avanzado»: tarjetas por día de la semana, duraciones y gráficas por duración.
 import React from "react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import { fmtLotes, fmtDuration } from "../utils/journal";
+import { fmtLotes, fmtDuration, tonoResultado } from "../utils/journal";
 import { fmtMoney, fmtDate } from "./formato";
+
+// Clase de color de un importe: verde, rojo o azul plano (0 $). Sin dato, sin color.
+const tono = (hay, importe) => (hay ? `jt-pnl-${tonoResultado(importe)}` : "");
 
 export default function AnalisisAvanzado({ analisis, stats }) {
   return (
@@ -19,14 +22,14 @@ export default function AnalisisAvanzado({ analisis, stats }) {
         </div>
         <div className="jt-analysis-card">
           <div className="jt-stat-label">Día más rentable</div>
-          <div className={`jt-stat-value jt-mono ${analisis.mostProfitableDay && analisis.mostProfitableDay.total >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
+          <div className={`jt-stat-value jt-mono ${tono(analisis.mostProfitableDay, analisis.mostProfitableDay?.total)}`}>
             {analisis.mostProfitableDay ? <span className="importe">{fmtMoney(analisis.mostProfitableDay.total)}</span> : "\u2014"}
           </div>
           <div className="jt-analysis-sub jt-mono">{analisis.mostProfitableDay ? analisis.mostProfitableDay.label : ""}</div>
         </div>
         <div className="jt-analysis-card">
           <div className="jt-stat-label">Día menos rentable</div>
-          <div className={`jt-stat-value jt-mono ${analisis.leastProfitableDay && analisis.leastProfitableDay.total >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
+          <div className={`jt-stat-value jt-mono ${tono(analisis.leastProfitableDay, analisis.leastProfitableDay?.total)}`}>
             {analisis.leastProfitableDay ? <span className="importe">{fmtMoney(analisis.leastProfitableDay.total)}</span> : "\u2014"}
           </div>
           <div className="jt-analysis-sub jt-mono">{analisis.leastProfitableDay ? analisis.leastProfitableDay.label : ""}</div>
@@ -56,22 +59,22 @@ export default function AnalisisAvanzado({ analisis, stats }) {
 
         <div className="jt-analysis-card">
           <div className="jt-stat-label">Promedio ganancia</div>
-          <div className="jt-stat-value jt-mono jt-pnl-win"><span className="importe">{fmtMoney(stats.avgWin)}</span></div>
+          <div className={`jt-stat-value jt-mono ${tono(true, stats.avgWin)}`}><span className="importe">{fmtMoney(stats.avgWin)}</span></div>
         </div>
         <div className="jt-analysis-card">
           <div className="jt-stat-label">Promedio pérdida</div>
-          <div className="jt-stat-value jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-stats.avgLoss)}</span></div>
+          <div className={`jt-stat-value jt-mono ${tono(true, -stats.avgLoss)}`}><span className="importe">{fmtMoney(-stats.avgLoss)}</span></div>
         </div>
         <div className="jt-analysis-card">
           <div className="jt-stat-label">Mejor operación</div>
-          <div className="jt-stat-value jt-mono jt-pnl-win">
+          <div className={`jt-stat-value jt-mono ${tono(analisis.bestTrade, analisis.bestTrade?.resultado)}`}>
             {analisis.bestTrade ? <span className="importe">{fmtMoney(analisis.bestTrade.resultado)}</span> : "—"}
           </div>
           <div className="jt-analysis-sub jt-mono">{analisis.bestTrade ? fmtDate(analisis.bestTrade.fecha) : ""}</div>
         </div>
         <div className="jt-analysis-card">
           <div className="jt-stat-label">Peor operación</div>
-          <div className="jt-stat-value jt-mono jt-pnl-loss">
+          <div className={`jt-stat-value jt-mono ${tono(analisis.worstTrade, analisis.worstTrade?.resultado)}`}>
             {analisis.worstTrade ? <span className="importe">{fmtMoney(analisis.worstTrade.resultado)}</span> : "—"}
           </div>
           <div className="jt-analysis-sub jt-mono">{analisis.worstTrade ? fmtDate(analisis.worstTrade.fecha) : ""}</div>

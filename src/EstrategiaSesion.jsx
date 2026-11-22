@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Crown, Play, CheckCircle2, MessageSquare, ImagePlus, X, AlertTriangle } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
-import { SESION_NOMBRES, fmtFechaLarga, todayIsoLocal, calcularStats, StatCards, VisorCaptura } from "./estrategiaComun";
+import { hoyIso } from "./utils/periodo";
+import { SESION_NOMBRES, fmtFechaLarga, calcularStats, StatCards, VisorCaptura } from "./estrategiaComun";
 import { CapturaImg } from "./capturasUrls";
 import {
   CHECKS_TABLE,
@@ -39,7 +40,7 @@ export default function EstrategiaSesion({ session, sesion }) {
 
   // Sesión en curso (registro en_curso de hoy)
   const [registro, setRegistro] = useState(null); // { id, fecha, instrumento, notas }
-  const [fFecha, setFFecha] = useState(todayIsoLocal());
+  const [fFecha, setFFecha] = useState(hoyIso);
   const [fInstrumento, setFInstrumento] = useState("");
   const [fNotas, setFNotas] = useState("");
   // Estado de cada check: { [criterioId]: { cumplido, comentario, captura_path, created_at, guardando, subiendo, fallo } }
@@ -97,7 +98,7 @@ export default function EstrategiaSesion({ session, sesion }) {
         .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0];
       if (!enCurso) {
         setPendiente(null);
-      } else if (enCurso.fecha === todayIsoLocal()) {
+      } else if (enCurso.fecha === hoyIso()) {
         setPendiente(null);
         await retomarRegistro(enCurso);
       } else {
@@ -295,7 +296,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     });
     reiniciarEstado(inicial);
     setComentarios(borradores);
-    setFFecha(r.fecha || todayIsoLocal());
+    setFFecha(r.fecha || hoyIso());
     setFInstrumento(r.instrumento || "");
     setFNotas(r.notas || "");
     setActivoId(null);
@@ -306,7 +307,7 @@ export default function EstrategiaSesion({ session, sesion }) {
     if (pendiente || registroRef.current) return;
     setBusy(true);
     setError(false);
-    const hoy = todayIsoLocal();
+    const hoy = hoyIso();
     const { checks, cumplida } = snapshotChecks(criteriosOrdenados, {});
     const { data, error } = await supabase
       .from(REGISTROS_TABLE)
