@@ -1,21 +1,10 @@
-// Pruebas del importador de operaciones (src/importar/). Sin dependencias:
-//   node scripts/probar-importador.js
-// Sale con código 1 si algo falla.
+// Pruebas del importador de operaciones (src/importar/). Se ejecutan con npm test.
 import { leerCsv } from "../src/importar/csv.js";
 import { instrumentoDe, partirFechaHora, convertirZona, offsetDe } from "../src/importar/comun.js";
 import { parsePnl } from "../src/importar/tradovate.js";
 import { FORMATOS, detectarFormato, procesar, opcionesDeArchivo, filaDeTrade, trocearClaves, LIMITE_FILAS } from "../src/importar/index.js";
+import { igual } from "./igual.js";
 
-let fallos = 0;
-let pruebas = 0;
-function igual(real, esperado, nombre) {
-  pruebas++;
-  const a = JSON.stringify(real);
-  const b = JSON.stringify(esperado);
-  if (a === b) return;
-  fallos++;
-  console.error(`✗ ${nombre}\n    esperado: ${b}\n    obtenido: ${a}`);
-}
 const suma = (ops) => Math.round(ops.reduce((s, o) => s + o.resultado, 0) * 100) / 100;
 const resumen = (o) => [o.fecha, o.instrumento, o.direccion, o.contratos, o.precio_entrada, o.hora_entrada, o.precio_salida, o.hora_salida, o.resultado];
 
@@ -318,9 +307,3 @@ igual(procesar(TOPSTEPX, "tradovate").error, "Este archivo no parece una exporta
 }
 igual(trocearClaves(Array.from({ length: 250 }, (_, i) => `k${i}`)).map((t) => t.length), [100, 100, 50], "Claves en trozos de 100");
 igual(trocearClaves(["a".repeat(3000), "b".repeat(3000), "c"]).map((t) => t.length), [1, 2], "Claves largas: trozos por tamaño");
-
-if (fallos > 0) {
-  console.error(`\n${fallos} de ${pruebas} comprobaciones han fallado.`);
-  process.exit(1);
-}
-console.log(`✓ ${pruebas} comprobaciones correctas.`);
