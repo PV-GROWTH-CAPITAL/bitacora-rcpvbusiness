@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Pencil, Trash2, X, ChevronDown } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
-import { SESION_NOMBRES, fmtFechaLarga, todayIsoLocal, calcularStats, StatCards, DetalleChecks, VisorCaptura } from "./estrategiaComun";
+import { hoyIso } from "./utils/periodo";
+import { useHoy } from "./utils/useHoy";
+import { SESION_NOMBRES, fmtFechaLarga, calcularStats, StatCards, DetalleChecks, VisorCaptura } from "./estrategiaComun";
 import { CHECKS_TABLE, checksDeRegistro, borrarCapturasRegistro, fmtHora } from "./estrategiaChecks";
 import { CapturaImg } from "./capturasUrls";
 
@@ -75,7 +77,7 @@ export default function EstrategiaEstadisticas() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false); // false | true | texto del error de Supabase
   const mensajeError = (e) => (e && typeof e === "object" && e.message) || true;
-  const [hoy, setHoy] = useState(todayIsoLocal);
+  const hoy = useHoy(); // a medianoche pasa al día siguiente solo
   const [mesesAbiertos, setMesesAbiertos] = useState(() => ({ ...mesesAbiertosMemo }));
 
   // Modal "Editar registro"
@@ -114,14 +116,6 @@ export default function EstrategiaEstadisticas() {
   useEffect(() => {
     cargar();
   }, [cargar]);
-
-  // Si la página sigue abierta a medianoche, "Hoy" pasa al día siguiente solo.
-  useEffect(() => {
-    const ahora = new Date();
-    const mañana = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 1);
-    const t = setTimeout(() => setHoy(todayIsoLocal()), mañana - ahora + 1000);
-    return () => clearTimeout(t);
-  }, [hoy]);
 
   const deHoy = useMemo(() => registros.filter((r) => r.fecha === hoy), [registros, hoy]);
   const anteriores = useMemo(() => registros.filter((r) => r.fecha !== hoy), [registros, hoy]);
@@ -176,7 +170,7 @@ export default function EstrategiaEstadisticas() {
 
   function abrirEditar(r) {
     setEditando(r);
-    setEFecha(r.fecha || todayIsoLocal());
+    setEFecha(r.fecha || hoyIso());
     setEInstrumento(r.instrumento || "");
     setENotas(r.notas || "");
     setEChecks((r.checks || []).map((c) => ({ ...c, cumplido: !!c.cumplido })));

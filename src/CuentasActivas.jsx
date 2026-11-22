@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Plus, X, Trash2, Pencil, Landmark, ChevronDown, ChevronUp, Archive, Banknote, RotateCcw } from "lucide-react";
 import { supabase, conReintento } from "./supabaseClient";
+import { hoyIso } from "./utils/periodo";
+import { useHoy } from "./utils/useHoy";
 import {
   calcularDD,
   calcularTarget,
@@ -102,11 +104,6 @@ function fmtDate(d) {
   const dt = new Date(d + "T00:00:00");
   if (isNaN(dt)) return d;
   return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
-}
-
-function todayIsoLocal() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function numOrNull(v) {
@@ -231,7 +228,7 @@ export default function CuentasActivas({ session }) {
     cargarConfig();
   }, [cargarConfig]);
 
-  const todayIso = todayIsoLocal();
+  const todayIso = useHoy();
 
   // Trades y retiros se enlazan con la cuenta por nombre (campo "cuenta"), igual que en el Journal y en Contabilidad.
   const datosPorCuenta = useMemo(() => {
@@ -417,7 +414,7 @@ export default function CuentasActivas({ session }) {
     if (texto == null || texto === "" || isNaN(Number(texto))) return;
     setBusy(true);
     const ok = await ejecutar(() =>
-      supabase.from(CUENTAS_TABLE).update({ margen_manual: Number(texto), margen_manual_fecha: todayIsoLocal() }).eq("id", c.id)
+      supabase.from(CUENTAS_TABLE).update({ margen_manual: Number(texto), margen_manual_fecha: hoyIso() }).eq("id", c.id)
     );
     setBusy(false);
     if (ok) setMargenPanel((prev) => ({ ...prev, [c.id]: "" }));
@@ -459,7 +456,7 @@ export default function CuentasActivas({ session }) {
   }
 
   function abrirCierre(c) {
-    setCierre({ id: c.id, nombre: c.nombre, tipo: c.tipo, motivo: "", fecha: todayIsoLocal() });
+    setCierre({ id: c.id, nombre: c.nombre, tipo: c.tipo, motivo: "", fecha: hoyIso() });
   }
 
   async function confirmarCierre() {
@@ -493,7 +490,7 @@ export default function CuentasActivas({ session }) {
       cuenta: c.nombre,
       montoUsd: "",
       montoEur: "",
-      fecha: todayIsoLocal(),
+      fecha: hoyIso(),
       proveedor: ultimoConEmpresa ? ultimoConEmpresa.proveedor : "",
     });
   }
@@ -504,7 +501,7 @@ export default function CuentasActivas({ session }) {
       cuenta: r.cuenta,
       montoUsd: r.monto_usd ?? "",
       montoEur: r.monto ?? "",
-      fecha: r.fecha || todayIsoLocal(),
+      fecha: r.fecha || hoyIso(),
       proveedor: r.proveedor || "",
     });
   }
