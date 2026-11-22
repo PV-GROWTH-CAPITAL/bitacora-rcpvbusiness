@@ -55,6 +55,8 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 
 **Deployment:** Netlify, configured in `netlify.toml` — `npm run build`, publish `dist/`, SPA fallback (`/* → /index.html`), plus baseline security headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`).
 
+**PWA:** `vite-plugin-pwa` en `vite.config.js` (el manifest lo genera el plugin: «RCPV Bitácora» / «Bitácora», iconos 192, 512 y `public/icon-maskable-512.png`; las metas de iOS están en `index.html`). El service worker solo precachea el build (`globPatterns`); `*.supabase.co` va en NetworkOnly y Google Fonts por la red sin caché. `navigateFallbackDenylist` excluye `.html` sueltos y `/.netlify/`. En `npm run dev` no hay service worker. `src/AvisoActualizacion.jsx` registra el SW (`registerType: "prompt"`), mira si hay versión nueva cada hora y al volver a la pestaña, y muestra «Hay una versión nueva · Actualizar»: nunca recarga solo. `src/SinConexion.jsx` tapa la app sin desmontarla mientras no hay red (`src/utils/conexion.js`, pruebas en `tests/conexion.test.js`). `netlify.toml` sirve `sw.js` y `manifest.webmanifest` con `Cache-Control: no-cache`.
+
 ## Imagen "Operativa Trading"
 - Botón "Imagen operativa" en `TradingJournal.jsx`. Solo aparece con un único día filtrado. El diseño está en `src/OperativaImagen.jsx`.
 - La lógica de cálculo está en `src/utils/operativa.js` y la comparten la web y el script de `PLANTILLAS/operativa-img/generar.js` (`~/Desktop/RCPV BUSINESS/PLANTILLAS/operativa-img`). Si la cambias, comprueba que el script sigue funcionando.
@@ -82,7 +84,7 @@ This is a single-page React app ("Bitácora de trading" — a trading journal / 
 - Solo lectura permitida sin preguntar: get_advisors, list_tables, search_docs.
 - No uses la CLI de Supabase para migraciones en este proyecto.
 
-## Reglas de PWA (cuando se haga)
+## Reglas de PWA
 - Usar vite-plugin-pwa (te autorizo esa dependencia cuando hagamos la PWA, no antes).
 - Precachear SOLO el build estático (JS, CSS, HTML, iconos, fuentes).
 - Todo lo que vaya a *.supabase.co (auth, REST, storage, imágenes de capturas y payouts) va siempre por la red, NetworkOnly, sin guardarse nunca en caché.
