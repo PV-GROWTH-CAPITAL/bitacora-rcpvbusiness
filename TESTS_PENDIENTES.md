@@ -1,38 +1,46 @@
 # Tests pendientes (para el refactor)
 
 Estos cálculos viven dentro de componentes y todavía no tienen tests. Para probarlos hay que sacarlos
-antes a funciones puras (por ejemplo en `src/utils/`). No se han movido en el PR de tests para no
-cambiar nada de lo que ve el usuario.
+antes a funciones puras (por ejemplo en `src/utils/`), sin cambiar nada de lo que ve el usuario.
 
-## Fallos detectados (arreglar en el refactor, con su test)
+## Fallos detectados (para el PR B, con su test)
 
-- [ ] **Racha actual del Journal: ordenar por fecha y hora.** `stats` en `src/TradingJournal.jsx`
-  recorre `chronological`, que solo ordena por `fecha`. Si un día tiene varias operaciones, la racha
-  depende del orden en que llegan de Supabase. Ordenar por `fecha` + `hora_entrada` (y quizá
-  `created_at` para desempatar).
+Los tests de `tests/journal.test.js` que llevan «fallo conocido» fijan el comportamiento de ahora:
+al arreglar cada fallo, ese test se cambia por el bueno.
+
+### Fechas
+- [ ] **Racha actual del Journal: ordenar por fecha y hora.** `calcularStats` recibe
+  `ordenCronologico()` (`src/utils/journal.js`), que solo ordena por `fecha`. Si un día tiene varias
+  operaciones, la racha depende del orden en que llegan de Supabase. Ordenar por `fecha` +
+  `hora_entrada` (y quizá `created_at` para desempatar).
 - [ ] **Unificar «hoy» en hora de Madrid en Journal y Objetivos.** `todayIsoLocal()` en
-  `src/TradingJournal.jsx` y `isoOf(new Date())` en `src/Objetivos.jsx` usan la fecha local del
+  `src/utils/journal.js` y `isoOf(new Date())` en `src/Objetivos.jsx` usan la fecha local del
   navegador, mientras que Contabilidad, Payouts e Informes usan `hoyIso()` de `src/utils/periodo.js`
   (día civil de Madrid). Desde fuera de España, un objetivo puede pasar a «fallido» otro día.
   También afecta a `rangoSugerido()` de Objetivos.
+- [ ] **Fecha por defecto de «Nueva operación» calculada al abrir el formulario.** `emptyForm.fecha`
+  (`src/journal/formulario/useFormularioOperacion.js`) se calcula al cargar el módulo: con la pestaña
+  abierta pasada la medianoche, el formulario propone el día anterior.
+
+### Colores
+- [ ] **Una operación de 0 $ se ve «plana» en todas partes.** El calendario ya la pinta en azul
+  (`cal-flat`), pero el ticker (`src/journal/Ticker.jsx`, `>= 0` → `win`) y la tabla
+  (`src/journal/FilaOperacion.jsx`, `>= 0` → `jt-pnl-win`) la pintan en verde.
+
+### Objetivos
 - [ ] **Meta en $ de 0 o negativa: no mostrar «(%)» vacío.** En `src/Objetivos.jsx`, si
   `meta_valor <= 0` el % es `null`: la tarjeta muestra «(%)» y la barra se queda sin ancho. Además, con
   meta negativa solo se da por cumplido si el P&L es ≥ 0. Decidir qué significa una meta negativa
   («no perder más de X») y probarlo.
 
+### Mejor / peor operación
+- [ ] **Sin resultados numéricos, mostrar «—».** `calcularAnalisis` (`src/utils/journal.js`) se
+  queda con la primera operación como mejor y peor cuando ningún resultado es un número, y el panel
+  enseña su importe (0,00 $) y su fecha.
+
 ## Cálculos dentro de componentes
 
-### `src/TradingJournal.jsx`
-- `stats` (useMemo): nº de operaciones, P&L total, **win rate** (las de 0 $ cuentan en el total),
-  profit factor (∞ sin pérdidas), ganancia y pérdida media, **racha actual** (una de 0 $ la corta).
-- `analisis` (useMemo): lotes totales, días activos, media de operaciones por día, día más activo,
-  día más y menos rentable, duraciones medias (total, ganadoras, perdedoras), tramos de duración con
-  su win rate.
-- `dailyTotals`, `monthTotal`, `diasSobreRiesgoMes`: P&L por día, total del mes del calendario y
-  días por encima del riesgo máximo.
-- `equityData`: curva de capital acumulado.
-- Funciones del archivo sin exportar: `duracionSegundos` (cruza medianoche sumando 24 h),
-  `horaASegundos`, `bucketLabel`, `parseLotes`, `errorLotes`, `fmtDuration`.
+(Los del Journal ya están en `src/utils/journal.js` con sus tests en `tests/journal.test.js`.)
 
 ### `src/Informes.jsx`
 - `weekPorDia`: P&L y nº de operaciones de lunes a domingo.
