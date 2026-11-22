@@ -3,15 +3,6 @@
 Estos cálculos viven dentro de componentes y todavía no tienen tests. Para probarlos hay que sacarlos
 antes a funciones puras (por ejemplo en `src/utils/`), sin cambiar nada de lo que ve el usuario.
 
-## Fallos detectados (para el PR B, con su test)
-
-Al arreglar cada fallo se quita de esta lista y su test pasa a comprobar lo correcto.
-
-### Mejor / peor operación
-- [ ] **Sin resultados numéricos, mostrar «—».** `calcularAnalisis` (`src/utils/journal.js`) se
-  queda con la primera operación como mejor y peor cuando ningún resultado es un número, y el panel
-  enseña su importe (0,00 $) y su fecha.
-
 ## Cálculos dentro de componentes
 
 (Los del Journal ya están en `src/utils/journal.js` con sus tests en `tests/journal.test.js`.)

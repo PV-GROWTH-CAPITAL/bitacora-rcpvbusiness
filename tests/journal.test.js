@@ -308,9 +308,15 @@ describe("análisis avanzado", () => {
     expect(a.bestTrade.id).toBe(1);
     expect(a.worstTrade.id).toBe(3);
   });
-  it("fallo conocido: sin resultados numéricos, mejor y peor son la primera", () => {
-    const r = calcularAnalisis([op(1, "2026-11-16", ""), op(2, "2026-11-17", null)]);
-    expect([r.bestTrade.id, r.worstTrade.id]).toEqual([1, 1]);
+  it("sin resultados numéricos, mejor y peor son null (el panel muestra «—»)", () => {
+    const r = calcularAnalisis([op(1, "2026-11-16", ""), op(2, "2026-11-17", null), op(3, "2026-11-17", "abc")]);
+    expect([r.bestTrade, r.worstTrade]).toEqual([null, null]);
+  });
+  it("un resultado vacío no cuenta como 0: no gana a uno negativo ni pierde contra uno positivo", () => {
+    const r = calcularAnalisis([op(1, "2026-11-16", ""), op(2, "2026-11-17", -40), op(3, "2026-11-17", null)]);
+    expect([r.bestTrade.id, r.worstTrade.id]).toEqual([2, 2]);
+    const p = calcularAnalisis([op(1, "2026-11-16", null), op(2, "2026-11-17", 25)]);
+    expect([p.bestTrade.id, p.worstTrade.id]).toEqual([2, 2]);
   });
   it("sin horas no hay duraciones ni tramos con datos", () => {
     const r = calcularAnalisis([op(1, "2026-11-16", 10)]);

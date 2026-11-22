@@ -65,14 +65,14 @@ export default function AnalisisAvanzado({ analisis, stats }) {
         <div className="jt-analysis-card">
           <div className="jt-stat-label">Mejor operación</div>
           <div className="jt-stat-value jt-mono jt-pnl-win">
-            {analisis.bestTrade ? <span className="importe">{fmtMoney(analisis.bestTrade.resultado)}</span> : "N/D"}
+            {analisis.bestTrade ? <span className="importe">{fmtMoney(analisis.bestTrade.resultado)}</span> : "—"}
           </div>
           <div className="jt-analysis-sub jt-mono">{analisis.bestTrade ? fmtDate(analisis.bestTrade.fecha) : ""}</div>
         </div>
         <div className="jt-analysis-card">
           <div className="jt-stat-label">Peor operación</div>
           <div className="jt-stat-value jt-mono jt-pnl-loss">
-            {analisis.worstTrade ? <span className="importe">{fmtMoney(analisis.worstTrade.resultado)}</span> : "N/D"}
+            {analisis.worstTrade ? <span className="importe">{fmtMoney(analisis.worstTrade.resultado)}</span> : "—"}
           </div>
           <div className="jt-analysis-sub jt-mono">{analisis.worstTrade ? fmtDate(analisis.worstTrade.fecha) : ""}</div>
         </div>

@@ -266,9 +266,16 @@ export function calcularAnalisis(filtered) {
   const largos = filtered.filter((t) => t.direccion === "Largo").length;
   const cortos = filtered.filter((t) => t.direccion === "Corto").length;
 
-  // Mejor / peor operación
-  const bestTrade = filtered.reduce((a, b) => (Number(b.resultado) > Number(a.resultado) ? b : a));
-  const worstTrade = filtered.reduce((a, b) => (Number(b.resultado) < Number(a.resultado) ? b : a));
+  // Mejor / peor operación: solo entre las que tienen un resultado numérico; si no hay, null («—»).
+  const conResultado = filtered.filter(
+    (t) => t.resultado !== null && t.resultado !== undefined && t.resultado !== "" && Number.isFinite(Number(t.resultado))
+  );
+  const bestTrade = conResultado.length
+    ? conResultado.reduce((a, b) => (Number(b.resultado) > Number(a.resultado) ? b : a))
+    : null;
+  const worstTrade = conResultado.length
+    ? conResultado.reduce((a, b) => (Number(b.resultado) < Number(a.resultado) ? b : a))
+    : null;
 
   return {
     n,
