@@ -62,6 +62,10 @@ import {
 import { enmascarar } from "./utils/importes";
 import { ESTILOS_JOURNAL } from "./journal/estilos";
 import { fmtMoney, fmtDate } from "./journal/formato";
+import Ticker from "./journal/Ticker";
+import TarjetasStats from "./journal/TarjetasStats";
+import AnalisisAvanzado from "./journal/AnalisisAvanzado";
+import CurvaCapital from "./journal/CurvaCapital";
 
 const TABLE = "trades";
 
@@ -472,21 +476,7 @@ export default function TradingJournal({ session }) {
     <div className="jt-root">
       <style>{ESTILOS_JOURNAL}</style>
 
-      <div className="jt-ticker-wrap" aria-hidden={tickerTrades.length === 0}>
-        {tickerTrades.length > 0 ? (
-          <div className="jt-ticker-track">
-            {[...tickerTrades, ...tickerTrades].map((t, i) => (
-              <span key={i} className={`jt-pill ${Number(t.resultado) >= 0 ? "win" : "loss"}`}>
-                {t.instrumento} &middot; <span className="importe">{fmtMoney(t.resultado)}</span>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div style={{ paddingLeft: 24, fontSize: 12, color: "var(--text-dim)", fontFamily: "IBM Plex Mono, monospace" }}>
-            Aún no hay operaciones registradas
-          </div>
-        )}
-      </div>
+      <Ticker tickerTrades={tickerTrades} />
 
       <div className="jt-header">
         <div>
@@ -537,187 +527,11 @@ export default function TradingJournal({ session }) {
           <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 16 }}>Cargando tus operaciones…</div>
         )}
 
-        <div className="jt-stats">
-          <div className="jt-stat-card">
-            <div className="jt-stat-label">P&amp;L total</div>
-            <div className={`jt-stat-value jt-mono ${stats.totalPnl >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-              <span className="importe">{fmtMoney(stats.totalPnl)}</span>
-            </div>
-          </div>
-          <div className="jt-stat-card">
-            <div className="jt-stat-label">Win rate</div>
-            <div className="jt-stat-value jt-mono">{stats.n ? stats.winRate.toFixed(1) : "0.0"}%</div>
-          </div>
-          <div className="jt-stat-card">
-            <div className="jt-stat-label">Profit factor</div>
-            <div className="jt-stat-value jt-mono">
-              {stats.profitFactor === Infinity ? "\u221e" : stats.profitFactor.toFixed(2)}
-            </div>
-          </div>
-          <div className="jt-stat-card">
-            <div className="jt-stat-label">Operaciones</div>
-            <div className="jt-stat-value jt-mono">{stats.n}</div>
-          </div>
-          <div className="jt-stat-card">
-            <div className="jt-stat-label">Racha actual</div>
-            <div className={`jt-stat-value jt-mono ${stats.streakType === "win" ? "jt-pnl-win" : stats.streakType === "loss" ? "jt-pnl-loss" : ""}`}>
-              {stats.streak ? `${stats.streak} ${stats.streakType === "win" ? "\u2191" : "\u2193"}` : "\u2014"}
-            </div>
-          </div>
-        </div>
+        <TarjetasStats stats={stats} />
 
-        <div className="jt-panel">
-          <div className="jt-panel-title jt-mono" style={{ marginBottom: 12 }}>ANÁLISIS AVANZADO</div>
+        <AnalisisAvanzado analisis={analisis} stats={stats} />
 
-          <div className="jt-analysis-grid">
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Día más activo</div>
-              <div className="jt-stat-value jt-display">{analisis.mostActiveDay ? analisis.mostActiveDay.label : "\u2014"}</div>
-              <div className="jt-analysis-sub jt-mono">
-                {analisis.activeDays} días activos · {analisis.n} operaciones · {analisis.avgTradesPerDay.toFixed(1)} op./día
-              </div>
-            </div>
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Día más rentable</div>
-              <div className={`jt-stat-value jt-mono ${analisis.mostProfitableDay && analisis.mostProfitableDay.total >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                {analisis.mostProfitableDay ? <span className="importe">{fmtMoney(analisis.mostProfitableDay.total)}</span> : "\u2014"}
-              </div>
-              <div className="jt-analysis-sub jt-mono">{analisis.mostProfitableDay ? analisis.mostProfitableDay.label : ""}</div>
-            </div>
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Día menos rentable</div>
-              <div className={`jt-stat-value jt-mono ${analisis.leastProfitableDay && analisis.leastProfitableDay.total >= 0 ? "jt-pnl-win" : "jt-pnl-loss"}`}>
-                {analisis.leastProfitableDay ? <span className="importe">{fmtMoney(analisis.leastProfitableDay.total)}</span> : "\u2014"}
-              </div>
-              <div className="jt-analysis-sub jt-mono">{analisis.leastProfitableDay ? analisis.leastProfitableDay.label : ""}</div>
-            </div>
-
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Total de operaciones</div>
-              <div className="jt-stat-value jt-mono">{analisis.n}</div>
-            </div>
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Total de contratos/lotaje operados</div>
-              <div className="jt-stat-value jt-mono">{fmtLotes(analisis.totalLots)}</div>
-            </div>
-
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Duración prom. en ganadoras</div>
-              <div className="jt-stat-value jt-mono">{fmtDuration(analisis.avgWinDuration)}</div>
-            </div>
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Duración prom. en perdedoras</div>
-              <div className="jt-stat-value jt-mono">{fmtDuration(analisis.avgLossDuration)}</div>
-            </div>
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">% Largo / Corto</div>
-              <div className="jt-stat-value jt-mono">{analisis.directionPct.largo}% / {analisis.directionPct.corto}%</div>
-            </div>
-
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Promedio ganancia</div>
-              <div className="jt-stat-value jt-mono jt-pnl-win"><span className="importe">{fmtMoney(stats.avgWin)}</span></div>
-            </div>
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Promedio pérdida</div>
-              <div className="jt-stat-value jt-mono jt-pnl-loss"><span className="importe">{fmtMoney(-stats.avgLoss)}</span></div>
-            </div>
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Mejor operación</div>
-              <div className="jt-stat-value jt-mono jt-pnl-win">
-                {analisis.bestTrade ? <span className="importe">{fmtMoney(analisis.bestTrade.resultado)}</span> : "N/D"}
-              </div>
-              <div className="jt-analysis-sub jt-mono">{analisis.bestTrade ? fmtDate(analisis.bestTrade.fecha) : ""}</div>
-            </div>
-            <div className="jt-analysis-card">
-              <div className="jt-stat-label">Peor operación</div>
-              <div className="jt-stat-value jt-mono jt-pnl-loss">
-                {analisis.worstTrade ? <span className="importe">{fmtMoney(analisis.worstTrade.resultado)}</span> : "N/D"}
-              </div>
-              <div className="jt-analysis-sub jt-mono">{analisis.worstTrade ? fmtDate(analisis.worstTrade.fecha) : ""}</div>
-            </div>
-          </div>
-
-          {analisis.durationBuckets.some((b) => b.count > 0) ? (
-            <div className="jt-analysis-charts">
-              <div>
-                <div className="jt-panel-title jt-mono" style={{ fontSize: 12 }}>OPERACIONES POR DURACIÓN</div>
-                <div style={{ height: 320 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analisis.durationBuckets} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                      <CartesianGrid stroke="#262C39" strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" stroke="#8891A1" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} allowDecimals={false} />
-                      <YAxis type="category" dataKey="label" stroke="#8891A1" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} width={80} />
-                      <Tooltip
-                        contentStyle={{ background: "#171D28", border: "1px solid #262C39", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }}
-                        itemStyle={{ color: "#ECEFF3" }}
-                        labelStyle={{ color: "#8891A1", marginBottom: 4 }}
-                        formatter={(v) => [v, "Operaciones"]}
-                      />
-                      <Bar dataKey="count" fill="#C6A15A" radius={[0, 3, 3, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-              <div>
-                <div className="jt-panel-title jt-mono" style={{ fontSize: 12 }}>WIN RATE POR DURACIÓN</div>
-                <div style={{ height: 320 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analisis.durationBuckets} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                      <CartesianGrid stroke="#262C39" strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" domain={[0, 100]} stroke="#8891A1" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} tickFormatter={(v) => `${v}%`} />
-                      <YAxis type="category" dataKey="label" stroke="#8891A1" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono" }} width={80} />
-                      <Tooltip
-                        contentStyle={{ background: "#171D28", border: "1px solid #262C39", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }}
-                        itemStyle={{ color: "#ECEFF3" }}
-                        labelStyle={{ color: "#8891A1", marginBottom: 4 }}
-                        formatter={(v) => [`${v}%`, "Win rate"]}
-                      />
-                      <Bar dataKey="winRate" fill="#2F9670" radius={[0, 3, 3, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="jt-empty" style={{ marginTop: 8 }}>
-              Registra la hora de entrada y salida en tus operaciones para ver aquí el análisis de duración.
-            </div>
-          )}
-        </div>
-
-        <div className="jt-panel">
-          <div className="jt-panel-title jt-mono">CURVA DE CAPITAL</div>
-          <div style={{ height: 220 }}>
-            {equityData.length > 1 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={equityData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="jtGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#C6A15A" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#C6A15A" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="#262C39" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="idx" stroke="#8891A1" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} />
-                  <YAxis stroke="#8891A1" tick={{ fontSize: 11, fontFamily: "IBM Plex Mono" }} tickLine={false} width={70}
-                    tickFormatter={(v) => enmascarar(`${v.toLocaleString("es-ES")} $`)} />
-                  <ReferenceLine y={0} stroke="#262C39" />
-                  <Tooltip
-                    contentStyle={{ background: "#171D28", border: "1px solid #262C39", borderRadius: 8, fontSize: 12, fontFamily: "IBM Plex Mono" }}
-                        itemStyle={{ color: "#ECEFF3" }}
-                        labelStyle={{ color: "#8891A1", marginBottom: 4 }}
-                    labelFormatter={(v, p) => (p && p[0] ? fmtDate(p[0].payload.fecha) : v)}
-                    formatter={(v) => [fmtMoney(v), "Capital acumulado"]}
-                  />
-                  <Area type="monotone" dataKey="capital" stroke="#C6A15A" strokeWidth={2.5} fill="url(#jtGrad)" animationDuration={1100} animationEasing="ease-out" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="jt-empty">Registra al menos 2 operaciones para ver tu curva de capital.</div>
-            )}
-          </div>
-        </div>
+        <CurvaCapital equityData={equityData} />
 
         <div className="jt-panel">
           <div className="jt-cal-head">
