@@ -15,6 +15,9 @@ There is no lint tooling configured (no ESLint/Prettier). Tests: `npm test` runs
 
 Required environment variables (Vite `.env`, not committed): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. In production (Netlify) these are set as site environment variables. Without them, `supabaseClient.js` logs an error and the app cannot talk to the backend.
 
+Hooks de Claude Code (`.claude/settings.json`, scripts en `.claude/hooks/`): `tests-relacionados.sh` pasa `vitest related` al editar `src/utils/` o `src/importar/` y devuelve los fallos; `aviso-rollback.sh` avisa si un SQL nuevo de `sql/` no tiene `sql/rollback/<nombre>_rollback.sql`; `proteger-archivos.sh` bloquea editar `.env*` y `package-lock.json`.
+En el mismo archivo, `execute_sql`, `apply_migration` y `npm install` / `npm i` / `npm add` están en «ask» (siempre preguntan) y `list_tables`, `get_advisors` y `search_docs` permitidos.
+
 ## Architecture
 
 This is a single-page React app ("Bitácora de trading" — a trading journal / accounting tool for prop-firm funded accounts) built with Vite. There is no backend server and no client-side router: **Supabase is the entire backend** (Postgres via PostgREST, Auth, and Storage), accessed directly from components through `src/supabaseClient.js`, and screen switching is done with plain React state, not a routing library.

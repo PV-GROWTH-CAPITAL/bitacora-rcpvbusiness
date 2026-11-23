@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__f9ae6032-4110-4abd-9f2b-458775872bf3__list_tables",
+      "mcp__f9ae6032-4110-4abd-9f2b-458775872bf3__get_advisors",
+      "mcp__f9ae6032-4110-4abd-9f2b-458775872bf3__search_docs"
+    ],
+    "ask": [
+      "mcp__f9ae6032-4110-4abd-9f2b-458775872bf3__execute_sql",
+      "mcp__f9ae6032-4110-4abd-9f2b-458775872bf3__apply_migration",
+      "Bash(npm install)",
+      "Bash(npm install *)",
+      "Bash(npm i)",
+      "Bash(npm i *)",
+      "Bash(npm add)",
+      "Bash(npm add *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/proteger-archivos.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/tests-relacionados.sh",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/aviso-rollback.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
