@@ -33,3 +33,14 @@ antes a funciones puras (por ejemplo en `src/utils/`), sin cambiar nada de lo qu
   (o crear la lista solo con los proveedores de sus `cuentas_compradas` y `retiros`). La lista puede
   seguir existiendo como sugerencias en la bienvenida y en «Mis firmas» (`src/MisFirmas.jsx`).
   Encontrado por el revisor `revisor-rls`.
+- **Activar la protección contra contraseñas filtradas** en Auth de Supabase (Authentication >
+  Providers > Email; comprueba contra HaveIBeenPwned). Lo avisa el advisor de seguridad en producción
+  y en pruebas. **Ojo: solo está en el plan Pro o superior** y la organización está en Free
+  (comprobado el 23/11/2026). Mientras siga en Free: subir la longitud mínima de contraseña (8 o más)
+  y exigir dígitos, minúsculas, mayúsculas y símbolos en esa misma pantalla, que sí están en Free.
+- **Decidir qué hacer con `retiros_cuentas`.** La app no la lee ni la escribe: solo aparece en la
+  lista de tablas que borra «Borrar mi cuenta» (`src/misDatos.js`) y en los scripts de RLS
+  (`sql/rls_tablas_base.sql`, `sql/rls_referencias_propias.sql`). Está vacía en producción y en
+  pruebas, y su `user_id` no tiene `default auth.uid()`. Valorar borrarla (script nuevo en `sql/`
+  con su rollback, y quitarla de `src/misDatos.js` en el mismo cambio); si se va a usar, añadir antes
+  `default auth.uid()` a `user_id`.
