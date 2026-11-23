@@ -29,7 +29,7 @@ function fmtDateShort(iso) {
   if (isNaN(dt)) return iso;
   return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
 }
-export default function Objetivos() {
+export default function Objetivos({ session }) {
   return (
     <div className="obj-root">
       <style>{`
@@ -215,7 +215,7 @@ function SeccionObjetivos() {
     };
     const { error } = editId
       ? await supabase.from(OBJETIVOS_TABLE).update(registro).eq("id", editId)
-      : await supabase.from(OBJETIVOS_TABLE).insert(registro);
+      : await supabase.from(OBJETIVOS_TABLE).insert({ ...registro, user_id: session.user.id });
     setBusy(false);
     if (error) {
       console.error(error);
