@@ -23,3 +23,24 @@ antes a funciones puras (por ejemplo en `src/utils/`), sin cambiar nada de lo qu
 - `tablaPeriodos`: filas por trimestre o mes con ingresos, gastos, neto y acumulado; marca «en curso» y futuros.
 
 (Los de Objetivos ya están en `src/utils/objetivos.js` con sus tests en `tests/objetivos.test.js`.)
+
+## Pendiente antes de abrir a usuarios externos
+
+- **Quitar el reparto automático de `FIRMAS_SUGERIDAS`** (`src/empresasUsuario.js`). Hoy
+  `src/AppShell.jsx:86` hace `crearLista(userId, FIRMAS_SUGERIDAS)` a quien tiene contabilidad pero
+  aún no tiene lista: le pone las 11 firmas de siempre, sean o no las suyas. Choca con la regla de
+  «nada escrito a fuego para un usuario concreto». Antes de abrir, ese caso debe ir a la bienvenida
+  (o crear la lista solo con los proveedores de sus `cuentas_compradas` y `retiros`). La lista puede
+  seguir existiendo como sugerencias en la bienvenida y en «Mis firmas» (`src/MisFirmas.jsx`).
+  Encontrado por el revisor `revisor-rls`.
+- **Activar la protección contra contraseñas filtradas** en Auth de Supabase (Authentication >
+  Providers > Email; comprueba contra HaveIBeenPwned). Lo avisa el advisor de seguridad en producción
+  y en pruebas. **Ojo: solo está en el plan Pro o superior** y la organización está en Free
+  (comprobado el 23/11/2026). Mientras siga en Free: subir la longitud mínima de contraseña (8 o más)
+  y exigir dígitos, minúsculas, mayúsculas y símbolos en esa misma pantalla, que sí están en Free.
+- **Decidir qué hacer con `retiros_cuentas`.** La app no la lee ni la escribe: solo aparece en la
+  lista de tablas que borra «Borrar mi cuenta» (`src/misDatos.js`) y en los scripts de RLS
+  (`sql/rls_tablas_base.sql`, `sql/rls_referencias_propias.sql`). Está vacía en producción y en
+  pruebas, y su `user_id` no tiene `default auth.uid()`. Valorar borrarla (script nuevo en `sql/`
+  con su rollback, y quitarla de `src/misDatos.js` en el mismo cambio); si se va a usar, añadir antes
+  `default auth.uid()` a `user_id`.

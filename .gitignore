@@ -6,3 +6,4 @@ dist
 !.claude/skills/
 !.claude/settings.json
 !.claude/hooks/
+!.claude/agents/
