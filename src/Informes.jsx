@@ -212,7 +212,7 @@ export default function Informes({ session }) {
     return mutarObjetivos(() =>
       existente
         ? supabase.from(OBJETIVOS_TABLE).update({ titulo: texto }).eq("id", existente.id)
-        : supabase.from(OBJETIVOS_TABLE).insert({ titulo: texto, tipo: "semanal", fecha_inicio: proximoLunes, fecha_fin: proximoDomingo, meta_valor: null, notas: null })
+        : supabase.from(OBJETIVOS_TABLE).insert({ user_id: session.user.id, titulo: texto, tipo: "semanal", fecha_inicio: proximoLunes, fecha_fin: proximoDomingo, meta_valor: null, notas: null })
     );
   }
   function borrarCompromiso(o) {

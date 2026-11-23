@@ -23,3 +23,13 @@ antes a funciones puras (por ejemplo en `src/utils/`), sin cambiar nada de lo qu
 - `tablaPeriodos`: filas por trimestre o mes con ingresos, gastos, neto y acumulado; marca «en curso» y futuros.
 
 (Los de Objetivos ya están en `src/utils/objetivos.js` con sus tests en `tests/objetivos.test.js`.)
+
+## Pendiente antes de abrir a usuarios externos
+
+- **Quitar el reparto automático de `FIRMAS_SUGERIDAS`** (`src/empresasUsuario.js`). Hoy
+  `src/AppShell.jsx:86` hace `crearLista(userId, FIRMAS_SUGERIDAS)` a quien tiene contabilidad pero
+  aún no tiene lista: le pone las 11 firmas de siempre, sean o no las suyas. Choca con la regla de
+  «nada escrito a fuego para un usuario concreto». Antes de abrir, ese caso debe ir a la bienvenida
+  (o crear la lista solo con los proveedores de sus `cuentas_compradas` y `retiros`). La lista puede
+  seguir existiendo como sugerencias en la bienvenida y en «Mis firmas» (`src/MisFirmas.jsx`).
+  Encontrado por el revisor `revisor-rls`.
