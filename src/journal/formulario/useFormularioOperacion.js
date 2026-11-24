@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { rutaDeCaptura, useUrlCaptura } from "../../capturasUrls";
-import { comprimirCaptura, extensionDeBlob, ImagenIlegibleError } from "../../comprimirCaptura";
+import { ImagenIlegibleError } from "../../comprimirCaptura";
+import { subirCaptura } from "./subirCaptura";
 import {
   parseLotes,
   formInicial,
@@ -108,9 +109,9 @@ export function useFormularioOperacion() {
     if (capturaFile) {
       setSubiendoCaptura(true);
       setAvisoCaptura("");
-      let blob;
       try {
-        blob = await comprimirCaptura(capturaFile);
+        // Se guarda solo la ruta: la imagen se enseña con una URL firmada (ver capturasUrls.js).
+        capturaUrlFinal = await subirCaptura(capturaFile, session.user.id);
       } catch (e) {
         setSubiendoCaptura(false);
         if (e instanceof ImagenIlegibleError) {
@@ -122,19 +123,7 @@ export function useFormularioOperacion() {
         }
         return;
       }
-      const path = `${session.user.id}/${Date.now()}.${extensionDeBlob(blob)}`;
-      const { error: uploadError } = await supabase.storage.from("capturas").upload(path, blob, {
-        cacheControl: "3600",
-        contentType: blob.type,
-        upsert: false,
-      });
       setSubiendoCaptura(false);
-      if (uploadError) {
-        mostrarFallo(uploadError);
-        return;
-      }
-      // Se guarda solo la ruta: la imagen se enseña con una URL firmada (ver capturasUrls.js).
-      capturaUrlFinal = path;
     }
 
     const registro = {
@@ -194,6 +183,7 @@ export function useFormularioOperacion() {
     errorDetalle,
     modoMultiCuenta,
     cuentasSel,
+    setCuentasSel,
     todasSel,
     ajustes,
     toggleCuenta,

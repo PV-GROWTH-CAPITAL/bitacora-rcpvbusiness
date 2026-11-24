@@ -23,7 +23,7 @@ export default function TradingJournal({ session }) {
 
 function PaginaJournal() {
   const { state, actions, meta } = useJournal();
-  const { saveError, errorDetalle, loaded, tickerTrades, stats, analisis, equityData, showImportar, cuentasImportar, filtroCuenta, formulario } = state;
+  const { saveError, errorDetalle, loaded, tickerTrades, stats, analisis, equityData, showImportar, cuentasImportar, estrategiasUsadas, filtroCuenta, formulario } = state;
 
   return (
     <div className="jt-root">
@@ -59,6 +59,7 @@ function PaginaJournal() {
         <ImportarOperaciones
           session={meta.session}
           cuentas={cuentasImportar}
+          estrategias={estrategiasUsadas}
           cuentaInicial={filtroCuenta !== "Todas" ? filtroCuenta : ""}
           onClose={() => actions.setShowImportar(false)}
           onImportado={actions.cargarTrades}

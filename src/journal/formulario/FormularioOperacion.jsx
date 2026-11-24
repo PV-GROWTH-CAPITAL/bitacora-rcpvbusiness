@@ -6,6 +6,7 @@ import { errorLotes } from "../../utils/journal";
 import { useFormularioOperacion } from "./useFormularioOperacion";
 import SelectorCuentas from "./SelectorCuentas";
 import CampoCaptura from "./CampoCaptura";
+import CampoEstrategia from "./CampoEstrategia";
 
 export default function FormularioOperacion() {
   const f = useFormularioOperacion();
@@ -92,13 +93,13 @@ export default function FormularioOperacion() {
             <label>Hora de salida (opcional)</label>
             <input type="time" step="1" value={form.hora_salida} onChange={(e) => setForm({ ...form, hora_salida: e.target.value })} />
           </div>
-          <div className="jt-field" style={modoMultiCuenta ? { gridColumn: "1 / -1" } : undefined}>
-            <label>Estrategia / setup</label>
-            <input list="jt-estrategias" value={form.estrategia} onChange={(e) => setForm({ ...form, estrategia: e.target.value })} placeholder="Ej. Ruptura de apertura" />
-            <datalist id="jt-estrategias">
-              {estrategiasUsadas.map((s, i) => <option key={i} value={s} />)}
-            </datalist>
-          </div>
+          <CampoEstrategia
+            id="jt-estrategia"
+            value={form.estrategia}
+            onChange={(v) => setForm({ ...form, estrategia: v })}
+            opciones={estrategiasUsadas}
+            style={modoMultiCuenta ? { gridColumn: "1 / -1" } : undefined}
+          />
         </div>
 
         {modoMultiCuenta && <SelectorCuentas formulario={f} />}
