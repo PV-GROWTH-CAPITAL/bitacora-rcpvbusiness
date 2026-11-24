@@ -1,36 +1,17 @@
 // Alta en varias cuentas: chips de cuentas activas y, con más de una, contratos y resultado
 // por cuenta (con su ajuste a mano y el total).
 import React from "react";
-import { Check, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { errorLotes } from "../../utils/journal";
 import { fmtMoney } from "../formato";
+import ChipsCuentas from "./ChipsCuentas";
 
 export default function SelectorCuentas({ formulario }) {
-  const { cuentasActivas, cuentasSel, todasSel, ajustes, toggleCuenta, toggleTodas, valorCuenta, ajustarCuenta, restablecerCuenta } = formulario;
+  const { cuentasActivas, cuentasSel, setCuentasSel, ajustes, valorCuenta, ajustarCuenta, restablecerCuenta } = formulario;
 
   return (
     <div className="jt-field">
-      <div className="jt-acc-head">
-        <label>
-          Cuentas
-          <span className="jt-mono jt-acc-count">{cuentasSel.length}/{cuentasActivas.length}</span>
-        </label>
-        <button type="button" className="jt-link-btn" onClick={toggleTodas}>
-          {todasSel ? "Quitar todas" : "Seleccionar todas"}
-        </button>
-      </div>
-      <div className="jt-acc-chips" role="group" aria-label="Cuentas activas">
-        {cuentasActivas.map((c) => {
-          const on = cuentasSel.includes(c);
-          return (
-            <button key={c} type="button" className={`jt-acc-chip${on ? " on" : ""}`} aria-pressed={on} onClick={() => toggleCuenta(c)}>
-              <span className="jt-acc-check">{on && <Check size={11} strokeWidth={3} />}</span>
-              {c}
-            </button>
-          );
-        })}
-      </div>
-      {cuentasSel.length === 0 && <div className="jt-acc-hint">Selecciona al menos una cuenta.</div>}
+      <ChipsCuentas cuentas={cuentasActivas} seleccion={cuentasSel} onCambio={setCuentasSel} />
       {cuentasSel.length > 1 && (
         <div className="jt-acc-list">
           <div className="jt-acc-row jt-acc-row-head">

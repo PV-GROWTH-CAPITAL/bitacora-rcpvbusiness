@@ -135,8 +135,9 @@ export function procesar(texto, formatoId, opciones = {}) {
 }
 
 // Operación leída del archivo -> fila de la tabla `trades`.
-// Estrategia, notas y enlace se dejan vacíos igual que en el formulario; sin captura.
-export function filaDeTrade(op, cuenta, userId) {
+// Notas y enlace se dejan vacíos igual que en el formulario; estrategia y captura, las que se
+// elijan en la vista previa (por defecto, vacías).
+export function filaDeTrade(op, cuenta, userId, { estrategia = "", captura_url = null } = {}) {
   return {
     user_id: userId,
     fecha: op.fecha,
@@ -148,14 +149,84 @@ export function filaDeTrade(op, cuenta, userId) {
     salida: op.precio_salida,
     puntos: op.puntos,
     resultado: op.resultado,
-    estrategia: "",
+    estrategia,
     notas: "",
     enlace: "",
     hora_entrada: op.hora_entrada,
     hora_salida: op.hora_salida,
-    captura_url: null,
+    captura_url,
     origen_id: op.origen_id,
   };
+}
+
+// ---- Cuentas, estrategia y foto elegidas en la vista previa ----
+// `general` = { cuentas: [], estrategia: "", foto: clave | null } vale para todas las filas.
+// `ajustes` = { [origen_id]: { cuentas?, estrategia?, foto? } } guarda solo lo cambiado en una
+// fila; `foto: null` en un ajuste quiere decir «esta fila sin foto». La foto es una clave (la del
+// archivo elegido), no el archivo: así la general se sube una sola vez y la comparten sus filas.
+
+// Valores con los que se guardará una operación.
+export function valoresDeFila(op, general, ajustes) {
+  const a = ajustes[op.origen_id] || {};
+  return {
+    cuentas: a.cuentas !== undefined ? a.cuentas : general.cuentas,
+    estrategia: a.estrategia !== undefined ? a.estrategia : general.estrategia,
+    foto: "foto" in a ? a.foto : general.foto,
+  };
+}
+
+// Cuentas elegidas para la operación en las que todavía no está guardada.
+// `yaPorCuenta` = { [origen_id]: [cuentas en las que ya existe] }.
+export function cuentasPendientes(op, valores, yaPorCuenta) {
+  const ya = yaPorCuenta[op.origen_id] || [];
+  return valores.cuentas.filter((c) => !ya.includes(c));
+}
+
+// Operaciones que no están guardadas en ninguna cuenta y no tienen cuenta elegida.
+export function operacionesSinCuenta(ops, general, ajustes, yaPorCuenta) {
+  return ops.filter((o) => !(yaPorCuenta[o.origen_id] || []).length && valoresDeFila(o, general, ajustes).cuentas.length === 0);
+}
+
+// Claves de foto que hay que subir (sin repetir), en el orden en que aparecen.
+export function fotosUsadas(ops, general, ajustes, yaPorCuenta) {
+  const claves = [];
+  for (const o of ops) {
+    const v = valoresDeFila(o, general, ajustes);
+    if (v.foto && cuentasPendientes(o, v, yaPorCuenta).length > 0 && !claves.includes(v.foto)) claves.push(v.foto);
+  }
+  return claves;
+}
+
+// Filas de `trades` que se van a insertar: una por operación y cuenta pendiente, igual que
+// «Añadir operación» con varias cuentas. `rutas` = { [clave de foto]: ruta en Storage }.
+export function filasDeImportacion(ops, general, ajustes, yaPorCuenta, rutas, userId) {
+  const filas = [];
+  for (const o of ops) {
+    const v = valoresDeFila(o, general, ajustes);
+    const captura_url = v.foto ? rutas[v.foto] || null : null;
+    for (const c of cuentasPendientes(o, v, yaPorCuenta)) {
+      filas.push(filaDeTrade(o, c, userId, { estrategia: v.estrategia.trim(), captura_url }));
+    }
+  }
+  return filas;
+}
+
+// Resumen de lo que se va a guardar: operaciones con algo pendiente, registros (operación ×
+// cuenta) y P&L neto y bruto de esos registros, sumados en céntimos.
+export function resumenImportacion(ops, general, ajustes, yaPorCuenta) {
+  let operaciones = 0;
+  let registros = 0;
+  let neto = 0;
+  let bruto = 0;
+  for (const o of ops) {
+    const n = cuentasPendientes(o, valoresDeFila(o, general, ajustes), yaPorCuenta).length;
+    if (n === 0) continue;
+    operaciones += 1;
+    registros += n;
+    neto += n * Math.round((Number(o.resultado) || 0) * 100);
+    bruto += n * Math.round((Number(o.resultado_bruto) || 0) * 100);
+  }
+  return { operaciones, registros, neto: neto / 100, bruto: bruto / 100 };
 }
 
 // Parte una lista de claves en trozos para consultarlas con .in(): como mucho `maxClaves`

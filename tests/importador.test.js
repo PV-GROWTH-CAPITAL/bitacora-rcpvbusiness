@@ -2,7 +2,10 @@
 import { leerCsv } from "../src/importar/csv.js";
 import { instrumentoDe, partirFechaHora, convertirZona, offsetDe } from "../src/importar/comun.js";
 import { parsePnl } from "../src/importar/tradovate.js";
-import { FORMATOS, detectarFormato, procesar, opcionesDeArchivo, filaDeTrade, trocearClaves, LIMITE_FILAS } from "../src/importar/index.js";
+import {
+  FORMATOS, detectarFormato, procesar, opcionesDeArchivo, filaDeTrade, trocearClaves, LIMITE_FILAS,
+  valoresDeFila, cuentasPendientes, operacionesSinCuenta, fotosUsadas, filasDeImportacion, resumenImportacion,
+} from "../src/importar/index.js";
 import { igual } from "./igual.js";
 
 const suma = (ops) => Math.round(ops.reduce((s, o) => s + o.resultado, 0) * 100) / 100;
@@ -307,3 +310,36 @@ igual(procesar(TOPSTEPX, "tradovate").error, "Este archivo no parece una exporta
 }
 igual(trocearClaves(Array.from({ length: 250 }, (_, i) => `k${i}`)).map((t) => t.length), [100, 100, 50], "Claves en trozos de 100");
 igual(trocearClaves(["a".repeat(3000), "b".repeat(3000), "c"]).map((t) => t.length), [1, 2], "Claves largas: trozos por tamaño");
+
+// ------------------------------------------- Cuentas, estrategia y foto de la vista previa
+{
+  const op = (id, resultado, bruto = resultado) => ({
+    origen_id: id, fecha: "2026-11-09", instrumento: "NQ", direccion: "Largo", contratos: 1,
+    precio_entrada: 1, precio_salida: 2, puntos: 1, resultado, resultado_bruto: bruto,
+    hora_entrada: "10:00:00", hora_salida: "10:01:00",
+  });
+  const ops = [op("a", 100.1, 105), op("b", -50.2, -45), op("c", 10, 12)];
+  const general = { cuentas: ["X", "Y"], estrategia: " Ruptura ", foto: "general" };
+  const ajustes = { b: { cuentas: ["Z"], estrategia: "Rango", foto: "foto-b" }, c: { foto: null } };
+  const ya = { a: ["Y"] };
+
+  igual(valoresDeFila(ops[0], general, ajustes), { cuentas: ["X", "Y"], estrategia: " Ruptura ", foto: "general" }, "Vista previa: fila sin ajuste usa lo general");
+  igual(valoresDeFila(ops[1], general, ajustes), { cuentas: ["Z"], estrategia: "Rango", foto: "foto-b" }, "Vista previa: fila ajustada");
+  igual(valoresDeFila(ops[2], general, ajustes), { cuentas: ["X", "Y"], estrategia: " Ruptura ", foto: null }, "Vista previa: foto quitada solo en una fila");
+  igual(cuentasPendientes(ops[0], valoresDeFila(ops[0], general, ajustes), ya), ["X"], "Vista previa: no se repite en la cuenta donde ya está");
+
+  const filas = filasDeImportacion(ops, general, ajustes, ya, { general: "u/1.webp", "foto-b": "u/2.webp" }, "u");
+  igual(filas.map((f) => [f.origen_id, f.cuenta, f.estrategia, f.captura_url, f.user_id]), [
+    ["a", "X", "Ruptura", "u/1.webp", "u"],
+    ["b", "Z", "Rango", "u/2.webp", "u"],
+    ["c", "X", "Ruptura", null, "u"],
+    ["c", "Y", "Ruptura", null, "u"],
+  ], "Vista previa: una fila por operación y cuenta, con su estrategia y su foto");
+  igual(fotosUsadas(ops, general, ajustes, ya), ["general", "foto-b"], "Vista previa: cada foto se sube una vez");
+  igual(fotosUsadas(ops, general, ajustes, { a: ["X", "Y"] }), ["foto-b"], "Vista previa: no se sube la foto de una operación ya guardada");
+  igual(resumenImportacion(ops, general, ajustes, ya), { operaciones: 3, registros: 4, neto: 69.9, bruto: 84 }, "Vista previa: resumen en céntimos");
+
+  const sinCuentas = { cuentas: [], estrategia: "", foto: null };
+  igual(operacionesSinCuenta(ops, sinCuentas, { b: { cuentas: ["Z"] } }, { c: ["X"] }).map((o) => o.origen_id), ["a"], "Vista previa: operaciones nuevas sin cuenta");
+  igual(filasDeImportacion(ops, sinCuentas, {}, {}, {}, "u"), [], "Vista previa: sin cuentas no se guarda nada");
+}
