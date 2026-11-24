@@ -114,7 +114,7 @@ export default function ImportarOperaciones({ session, cuentas, estrategias = []
   const [cuentasExtra, setCuentasExtra] = useState([]);
   const [cuentaNueva, setCuentaNueva] = useState("");
   // Lo elegido para todas las filas y lo cambiado en filas concretas (ver valoresDeFila).
-  const [general, setGeneral] = useState(() => ({ ...SIN_ELECCION, cuentas: cuentaInicial ? [cuentaInicial] : [] }));
+  const [general, setGeneral] = useState(() => ({ ...SIN_ELECCION, cuentas: cuentaInicial && cuentas.includes(cuentaInicial) ? [cuentaInicial] : [] }));
   const [ajustes, setAjustes] = useState({});
   // Fotos elegidas, por clave: { file, preview (blob:) }. Se suben al confirmar.
   const [fotos, setFotos] = useState({});

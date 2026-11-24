@@ -112,11 +112,8 @@ export function JournalProvider({ session, children }) {
 
   const cuentas = useMemo(() => cuentasDeOperaciones(trades), [trades]);
 
-  // Cuentas que ofrece el importador: las activas y las que ya tienen operaciones.
-  const cuentasImportar = useMemo(
-    () => Array.from(new Set([...cuentasActivas, ...cuentas.filter((c) => c !== "Todas")])),
-    [cuentasActivas, cuentas]
-  );
+  // Cuentas que ofrece el importador: solo las activas (otra cuenta se escribe a mano en la vista previa).
+  const cuentasImportar = cuentasActivas;
 
   const estrategiasUsadas = useMemo(() => estrategiasDeOperaciones(trades), [trades]);
 
