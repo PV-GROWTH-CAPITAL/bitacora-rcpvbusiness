@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2, RefreshCw, Mail, Eye, EyeOff } from "lucide-react";
+import { LineChart, Wallet, LogOut, KeyRound, X, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, NotebookPen, BarChart3, Target, Briefcase, Menu, Landmark, HandCoins, Download, Trash2, RefreshCw, Mail, Eye, EyeOff, Brain } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { descargarMisDatos, borrarCuenta } from "./misDatos";
 import { FIRMAS_SUGERIDAS, cargarEmpresas, tieneDatosContables, crearLista } from "./empresasUsuario";
@@ -16,9 +16,10 @@ import Informes from "./Informes";
 import Objetivos from "./Objetivos";
 import CuentasActivas from "./CuentasActivas";
 import Payouts from "./Payouts";
+import DiarioEmocional from "./DiarioEmocional";
 
 export default function AppShell({ session, onLogout }) {
-  const [page, setPage] = useState("journal"); // "journal" | "estrategia" | "cuentas-activas" | "informes" | "objetivos" | "contabilidad" | "payouts"
+  const [page, setPage] = useState("journal"); // "journal" | "emocional" | "estrategia" | "cuentas-activas" | "informes" | "objetivos" | "contabilidad" | "payouts"
   const [analisisOpen, setAnalisisOpen] = useState(true);
   const [contabilidadOpen, setContabilidadOpen] = useState(false);
   // Filtro global de periodo y empresa: lo comparten Contabilidad y Payouts (barra FiltroPeriodo).
@@ -133,7 +134,7 @@ export default function AppShell({ session, onLogout }) {
 
   const nombresEmpresas = useMemo(() => empresas.map((e) => e.nombre), [empresas]);
 
-  const analisisPages = ["journal", "estrategia", "cuentas-activas"];
+  const analisisPages = ["journal", "emocional", "estrategia", "cuentas-activas"];
   const analisisActivo = analisisPages.includes(page);
 
   function irAAnalisis(sub) {
@@ -472,6 +473,9 @@ ${CSS_OCULTAR_IMPORTES}
               <button className={`shell-subbtn ${page === "journal" ? "active" : ""}`} onClick={() => irAAnalisis("journal")}>
                 <NotebookPen size={14} /> Journal
               </button>
+              <button className={`shell-subbtn ${page === "emocional" ? "active" : ""}`} onClick={() => irAAnalisis("emocional")}>
+                <Brain size={14} /> Emocional
+              </button>
               <button className={`shell-subbtn ${page === "estrategia" ? "active" : ""}`} onClick={() => irAAnalisis("estrategia")}>
                 <ClipboardCheck size={14} /> Estrategia de trading
               </button>
@@ -572,6 +576,8 @@ ${CSS_OCULTAR_IMPORTES}
       <main className="shell-main">
         {page === "journal" ? (
           <TradingJournal session={session} />
+        ) : page === "emocional" ? (
+          <DiarioEmocional session={session} />
         ) : page === "estrategia" ? (
           <EstrategiaTrading session={session} />
         ) : page === "cuentas-activas" ? (
